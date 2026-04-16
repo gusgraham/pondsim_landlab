@@ -1,0 +1,35 @@
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Test outputs
+_test_outputs/
+
+# IDE
+.vscode/
+*.code-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+
+# PyInstaller
+*.spec
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Distribution
+*.whl
+*.tar.gz

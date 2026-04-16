@@ -1,0 +1,16 @@
+numpy
+pandas
+scipy
+matplotlib
+landlab
+rasterio
+pyproj
+geopandas
+shapely
+fiona
+contextily
+netCDF4
+openpyxl
+PyQt5
+numba
+pytest

@@ -1,0 +1,23 @@
+name: pondsim
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - numpy
+  - pandas
+  - scipy
+  - matplotlib
+  - landlab
+  - rasterio
+  - pyproj
+  - geopandas
+  - shapely
+  - fiona
+  - contextily
+  - netcdf4
+  - openpyxl
+  - pyqt=5
+  - pytest
+  - pip
+  - pip:
+      - numba

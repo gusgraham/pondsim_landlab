@@ -1,0 +1,12 @@
+<RCC>
+  <qresource prefix="icons">
+    <file>resources/navZoomPrevious.png</file>
+    <file>resources/navZoomNext.png</file>
+    <file>resources/navZoomExtents.png</file>
+    <file>resources/navPan.png</file>
+    <file>resources/navZoomIn.png</file>
+    <file>resources/navZoomOut.png</file>
+    <file>resources/toggleStreetMap.png</file>
+    <file>resources/toggleImagery.png</file>
+  </qresource>
+</RCC>

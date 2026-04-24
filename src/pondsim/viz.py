@@ -82,8 +82,8 @@ def plot_overlay(data: np.ndarray, dem: DEM,
         cmap=cmap, vmin=0, vmax=vmax, alpha=alpha,
         interpolation="nearest",
     )
-    plt.colorbar(img, ax=ax, label=label, shrink=0.7)
-    return ax
+    cbar = ax.figure.colorbar(img, ax=ax, label=label, shrink=0.7)
+    return ax, cbar
 
 
 def plot_sources(sources: PointSources, ax: plt.Axes,
@@ -158,6 +158,7 @@ if _QT_AVAILABLE:
             layout.addWidget(self._canvas)
 
             self._dem: Optional[DEM] = None
+            self._cbar = None
 
         @property
         def ax(self) -> plt.Axes:
@@ -165,6 +166,13 @@ if _QT_AVAILABLE:
 
         def show_dem(self, dem: DEM, cmap: str = "terrain",
                      add_basemap: bool = False) -> None:
+            if self._cbar:
+                try:
+                    self._cbar.remove()
+                except Exception:
+                    pass
+                self._cbar = None
+            
             self._ax.clear()
             self._dem = dem
             plot_dem(dem, ax=self._ax, cmap=cmap)
@@ -177,7 +185,15 @@ if _QT_AVAILABLE:
                         cmap: str = "Blues") -> None:
             if self._dem is None:
                 raise RuntimeError("Call show_dem() before add_overlay()")
-            plot_overlay(data, self._dem, ax=self._ax, cmap=cmap, label=label)
+            
+            if self._cbar:
+                try:
+                    self._cbar.remove()
+                except Exception:
+                    pass
+                self._cbar = None
+
+            _, self._cbar = plot_overlay(data, self._dem, ax=self._ax, cmap=cmap, label=label)
             self._canvas.draw()
 
         def add_sources(self, sources: PointSources) -> None:

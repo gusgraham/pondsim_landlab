@@ -41,6 +41,8 @@ class ProjectParameters:
     use_two_pass: bool = False
     coarse_factor: int = 5
     buffer_m: float = 200.0
+    manning_n: float = 0.03
+    backend: str = "auto"
 
 
 @dataclass
@@ -49,6 +51,7 @@ class Project:
     dem_path: Optional[str] = None
     sources_path: Optional[str] = None
     hydrographs_path: Optional[str] = None
+    roughness_path: Optional[str] = None
     output_dir: Optional[str] = None
     parameters: ProjectParameters = field(default_factory=ProjectParameters)
     last_run: Optional[LastRun] = None
@@ -74,6 +77,7 @@ def save_project(project: Project, path: str | Path) -> None:
         "dem_path": project.dem_path,
         "sources_path": project.sources_path,
         "hydrographs_path": project.hydrographs_path,
+        "roughness_path": project.roughness_path,
         "output_dir": project.output_dir,
         "parameters": asdict(project.parameters),
         "last_run": asdict(project.last_run) if project.last_run else None,
@@ -106,6 +110,7 @@ def load_project(path: str | Path) -> Project:
         dem_path=data.get("dem_path"),
         sources_path=data.get("sources_path"),
         hydrographs_path=data.get("hydrographs_path"),
+        roughness_path=data.get("roughness_path"),
         output_dir=data.get("output_dir"),
         parameters=parameters,
         last_run=last_run,

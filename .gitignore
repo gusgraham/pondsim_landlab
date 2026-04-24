@@ -13,8 +13,11 @@ dist/
 build/
 *.egg
 
-# Test outputs
+# Testing
 _test_outputs/
+test_compare_small/
+test_compare/
+test_out/
 
 # IDE
 .vscode/

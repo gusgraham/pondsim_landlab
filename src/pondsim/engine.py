@@ -25,6 +25,7 @@ import pandas as pd
 from .hydrographs import HydrographSet
 from .raster import DEM, transform_from_landlab, write_raster
 from .sources import PointSources
+from .backends.base import BackendRegistry, extract_grid_arrays
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,8 @@ class SolverBackend(Protocol):
 class SimulationConfig:
     output_dir: str | Path
     simulation_duration_s: float       # total wall-clock time to simulate
+    manning_n: float | np.ndarray = 0.03    # scalar or 2D array (normalized to array by backend)
+    backend: str = "auto"              # auto, numpy, numba_cpu, numba_cuda
     fixed_timestep_s: float | None = None   # None → adaptive
     max_adaptive_dt_s: float = 120.0   # cap on adaptive step
     snapshot_interval_s: float = 300.0 # NetCDF snapshot cadence
@@ -112,48 +115,79 @@ def run_simulation(
     output_dir = Path(config.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    def _report(frac: float, msg: str) -> None:
-        logger.info("[%.0f%%] %s", frac * 100, msg)
-        if progress_cb:
-            progress_cb(frac, msg)
+    elapsed_time = 0.0
+    last_report_time = -100.0
+    last_report_frac = -1.0
 
-    # ------------------------------------------------------------------
-    # 1. Build RasterModelGrid from DEM (Landlab uses bottom-up row order)
-    # ------------------------------------------------------------------
+    def _report(frac: float, msg: str, force: bool = False) -> None:
+        nonlocal last_report_time, last_report_frac
+        now = elapsed_time # Use simulation time as a proxy or real time
+        if force or (now - last_report_time > 1.0) or (frac - last_report_frac > 0.01):
+            logger.info(msg)
+            if progress_cb:
+                progress_cb(frac, msg)
+            last_report_time = now
+            last_report_frac = frac
+
     nrows, ncols = dem.shape
     elev_ll = dem.elevation_landlab_order()   # bottom-up, flattened
-
-    # Replace NaNs before building the grid.
-    # Boundary NaN cells (nodata rim common in LiDAR extracts) get the minimum
-    # valid elevation so SinkFiller sees them as open outlets, not a flat wall.
-    # Interior NaN cells get the mean — they rarely affect flow routing.
-    nan_mask = np.isnan(elev_ll)
-    if nan_mask.any():
-        valid_min = float(np.nanmin(elev_ll))
-        valid_mean = float(np.nanmean(elev_ll))
-        # Identify boundary (perimeter) node indices in the flat Landlab array
-        boundary_nodes = np.concatenate([
-            np.arange(ncols),                              # bottom row
-            np.arange((nrows - 1) * ncols, nrows * ncols),  # top row
-            np.arange(ncols, (nrows - 1) * ncols, ncols),  # left column
-            np.arange(2 * ncols - 1, (nrows - 1) * ncols, ncols),  # right column
-        ])
-        boundary_nan = nan_mask.copy()
-        boundary_nan[~np.isin(np.arange(len(elev_ll)), boundary_nodes)] = False
-        interior_nan = nan_mask & ~boundary_nan
-
-        elev_ll[boundary_nan] = valid_min
-        elev_ll[interior_nan] = valid_mean
-        logger.warning(
-            "%d NaN cells replaced: %d boundary→min (%.2f m), %d interior→mean (%.2f m)",
-            nan_mask.sum(), boundary_nan.sum(), valid_min, interior_nan.sum(), valid_mean,
-        )
 
     grid = RasterModelGrid(
         (nrows, ncols),
         xy_spacing=(dem.dx, dem.dy),
         xy_of_lower_left=dem.xy_of_lower_left,
     )
+
+    # Replace NaNs before building the grid.
+    nan_mask = np.isnan(elev_ll)
+    if nan_mask.any():
+        valid_min = float(np.nanmin(elev_ll))
+        valid_mean = float(np.nanmean(elev_ll))
+        boundary_nodes = np.concatenate([
+            np.arange(ncols),                              # bottom row
+            np.arange((nrows - 1) * ncols, nrows * ncols),  # top row
+            np.arange(ncols, (nrows - 1) * ncols, ncols),  # left column
+            np.arange(2 * ncols - 1, (nrows - 1) * ncols, ncols),  # right column
+        ])
+        
+        # Set all NaN nodes to closed boundary status initially
+        grid.status_at_node[nan_mask] = grid.BC_NODE_IS_CLOSED
+        
+        # Perimeter nodes (NaN or not) should be outlets if on the edge
+        # unless we specifically want to close them.
+        edge_mask = np.zeros(len(elev_ll), dtype=bool)
+        edge_mask[boundary_nodes] = True
+        
+        # Perimeter NaNs -> fixed value (outlet)
+        boundary_nan = nan_mask & edge_mask
+        elev_ll[boundary_nan] = valid_min
+        grid.status_at_node[boundary_nan] = grid.BC_NODE_IS_FIXED_VALUE
+        
+        # Interior NaNs -> closed boundary
+        interior_nan = nan_mask & ~edge_mask
+        elev_ll[interior_nan] = valid_mean
+        grid.status_at_node[interior_nan] = grid.BC_NODE_IS_CLOSED
+
+        logger.warning(
+            "%d NaN cells replaced: %d boundary→outlet (%.2f m), %d interior→closed boundary",
+            nan_mask.sum(), boundary_nan.sum(), valid_min, interior_nan.sum()
+        )
+    
+    # Ensure we have outlets for SinkFiller (Landlab default + our NaN logic)
+    grid.set_status_at_node_on_edges(right=1, top=1, left=1, bottom=1)
+    
+    # Re-apply NaN boundary status (in case set_status_at_node_on_edges overwrote them)
+    if nan_mask.any():
+        grid.status_at_node[nan_mask & ~edge_mask] = grid.BC_NODE_IS_CLOSED
+        grid.status_at_node[nan_mask & edge_mask] = grid.BC_NODE_IS_FIXED_VALUE
+
+    n_core = np.sum(grid.status_at_node == 0)
+    n_outlets = np.sum(grid.status_at_node == 1)
+    logger.info("Grid status: %d core nodes, %d outlets", n_core, n_outlets)
+
+    # Final safety check: ensure no NaNs in topography
+    elev_ll = np.nan_to_num(elev_ll, nan=valid_mean if 'valid_mean' in locals() else 0.0)
+    
     grid.add_field("topographic__elevation", elev_ll.copy(), at="node")
     grid.add_field("surface_water__depth",
                    np.zeros(nrows * ncols), at="node")
@@ -184,13 +218,22 @@ def run_simulation(
     # 3. Initialise result tracking fields
     # ------------------------------------------------------------------
     grid.add_field("surface_water__maxdepth",
-                   np.full(nrows * ncols, config.max_depth_threshold), at="node")
-    grid.add_field("surface_water__maxlevel", elev_initial.copy(), at="node")
+                   np.full(nrows * ncols, config.max_depth_threshold, dtype=np.float32), 
+                   at="node")
+    grid.add_field("surface_water__maxlevel", elev_initial.copy().astype(np.float32), at="node")
 
     # ------------------------------------------------------------------
-    # 4. Set up OverlandFlow solver
+    # 4. Set up Solver Backend
     # ------------------------------------------------------------------
-    of = OverlandFlow(grid, steep_slopes=config.steep_slopes)
+    # Ensure all backends are registered
+    from . import backends  # noqa: F401
+    
+    # Extract data for the backend
+    grid_data = extract_grid_arrays(grid)
+    
+    # Select best engine
+    BackendClass = BackendRegistry.get_best_backend(grid, config)
+    solver = BackendClass(grid_data, config, grid=grid)
 
     # ------------------------------------------------------------------
     # 5. Optional NetCDF setup
@@ -206,7 +249,6 @@ def run_simulation(
     # 6. Simulation loop
     # ------------------------------------------------------------------
     _report(0.0, "Starting simulation …")
-    elapsed_time = 0.0
     next_snapshot_time = 0.0     # Bug fix #2 — threshold not modulo
     snapshot_index = 0
     inflow_volume_total = 0.0
@@ -224,7 +266,7 @@ def run_simulation(
         if config.fixed_timestep_s is not None:
             dt = config.fixed_timestep_s
         else:
-            dt = of.calc_time_step()
+            dt = solver.calc_time_step()
             if np.isnan(dt) or dt <= 0:
                 dt = 1.0   # fallback for dry-grid startup
             dt = min(dt, config.max_adaptive_dt_s)
@@ -247,7 +289,7 @@ def run_simulation(
             avg_flow = hydrographs.flow_average(nid, elapsed_time, elapsed_time + dt)
             dx, dy = grid.dx, grid.dy
             delta_depth = avg_flow * dt / (dx * dy)
-            grid.at_node["surface_water__depth"][gn] += delta_depth
+            solver.depth[gn] += delta_depth
             inflow_volume_total += avg_flow * dt
             row[nid] = avg_flow
 
@@ -261,10 +303,11 @@ def run_simulation(
             next_snapshot_time += config.snapshot_interval_s
 
         # Hydrodynamic step
-        of.run_one_step(dt)
+        solver.run_one_step(dt)
 
         # Update max depth / level
-        depth = grid.at_node["surface_water__depth"]
+        # Get current depth from solver for max_depth tracking
+        depth = solver.depth
         maxd = grid.at_node["surface_water__maxdepth"]
         np.maximum(depth, maxd, out=maxd)
 
@@ -273,10 +316,15 @@ def run_simulation(
                 f"t = {elapsed_time:.0f} / {config.simulation_duration_s:.0f} s  "
                 f"  inflow = {inflow_volume_total:.1f} m³")
 
+    # Final sync back to grid nodes
+    solver.sync_to_grid()
+
     # Final max level
     grid.at_node["surface_water__maxlevel"][:] = (
         grid.at_node["surface_water__maxdepth"] + elev_initial
     )
+
+    _report(1.0, f"Sim complete. Inflow: {inflow_volume_total:.1f} m³", force=True)
 
     if netcdf is not None:
         netcdf.close()
@@ -289,8 +337,15 @@ def run_simulation(
     def _ll_to_topdown(flat: np.ndarray) -> np.ndarray:
         return np.flipud(flat.reshape(nrows, ncols))
 
-    max_depth_2d = _ll_to_topdown(grid.at_node["surface_water__maxdepth"])
-    max_level_2d = _ll_to_topdown(grid.at_node["surface_water__maxlevel"])
+    # Final data cleaning for visualization/save
+    max_depth_raw = grid.at_node["surface_water__maxdepth"]
+    max_depth_raw[~np.isfinite(max_depth_raw)] = 0.0
+    
+    max_level_raw = grid.at_node["surface_water__maxlevel"]
+    max_level_raw[~np.isfinite(max_level_raw)] = 0.0
+
+    max_depth_2d = _ll_to_topdown(max_depth_raw)
+    max_level_2d = _ll_to_topdown(max_level_raw)
 
     write_raster(output_dir / "max_depth.tif", max_depth_2d, transform, dem.crs)
     write_raster(output_dir / "max_level.tif", max_level_2d, transform, dem.crs)

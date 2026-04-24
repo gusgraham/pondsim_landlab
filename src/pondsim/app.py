@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import traceback
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Optional
 
@@ -23,11 +24,33 @@ from .engine import SimulationConfig, SimulationResult, run_simulation
 from .hydrographs import HydrographSet, load_hydrographs, make_synthetic_hydrograph
 from .project import (LastRun, Project, ProjectParameters, load_project,
                       save_project, PROJECT_EXTENSION)
-from .raster import DEM, read_dem
+from .raster import DEM, read_dem, identify_flood_clusters, clip_dem_to_bbox
 from .sources import PointSources, load_sources, sources_from_xy
 from .viz import HydrographCanvas, MapCanvas
 
 logger = logging.getLogger(__name__)
+
+
+class QtStatusLogHandler(logging.Handler):
+    """Bridge between standard logging and Qt status label."""
+    def __init__(self, callback):
+        super().__init__()
+        self.callback = callback
+
+    def emit(self, record):
+        if record.levelno >= logging.INFO:
+            msg = self.format(record)
+            # Use QMetaObject to ensure thread-safe UI update
+            self.callback(msg)
+
+
+@dataclass
+class SimulationTask:
+    dem: DEM
+    sources: PointSources
+    hydrographs: HydrographSet
+    config: SimulationConfig
+    label: str = "simulation"
 
 
 # ---------------------------------------------------------------------------
@@ -36,28 +59,46 @@ logger = logging.getLogger(__name__)
 
 class SimWorker(QtCore.QThread):
     progress = QtCore.pyqtSignal(float, str)   # (fraction, message)
-    finished = QtCore.pyqtSignal(object)        # SimulationResult
+    finished = QtCore.pyqtSignal(object)        # list[SimulationResult] or single SimulationResult
     errored = QtCore.pyqtSignal(str)            # traceback string
+    ask_proceed = QtCore.pyqtSignal(int, int, float) # (n_clusters, pixels, pct)
 
-    def __init__(self, dem, sources, hydrographs, config):
+    def __init__(self, work_func: Callable[[list[bool], ProgressCallback, Callable], Any]):
         super().__init__()
-        self.dem = dem
-        self.sources = sources
-        self.hydrographs = hydrographs
-        self.config = config
+        self.work_func = work_func
         self._cancel = [False]
+        self._mutex = QtCore.QMutex()
+        self._wait_cond = QtCore.QWaitCondition()
+        self._proceed_res = False
 
     def cancel(self):
         self._cancel[0] = True
+        self._wait_cond.wakeAll()
+
+    def set_proceed_response(self, res: bool):
+        self._mutex.lock()
+        self._proceed_res = res
+        self._wait_cond.wakeAll()
+        self._mutex.unlock()
+
+    def _interactive_cb(self, n, px, pct):
+        """Called by the workflow from the worker thread."""
+        self.ask_proceed.emit(n, px, pct)
+        self._mutex.lock()
+        self._wait_cond.wait(self._mutex)
+        res = self._proceed_res
+        self._mutex.unlock()
+        return res
 
     def run(self):
         try:
-            result = run_simulation(
-                self.dem, self.sources, self.hydrographs, self.config,
-                progress_cb=lambda f, m: self.progress.emit(f, m),
-                cancel_flag=self._cancel,
-            )
-            self.finished.emit(result)
+            def _proxied_cb(frac, msg):
+                self.progress.emit(frac, msg)
+
+            result = self.work_func(self._cancel, _proxied_cb, self._interactive_cb)
+            
+            if not self._cancel[0]:
+                self.finished.emit(result)
         except Exception:
             self.errored.emit(traceback.format_exc())
 
@@ -71,9 +112,10 @@ class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Pondsim — Overland Flow Simulation")
-        self.resize(1400, 900)
+        self.resize(1280, 800)
 
         self._dem: Optional[DEM] = None
+        self._roughness: Optional[np.ndarray] = None
         self._sources: Optional[PointSources] = None
         self._hydrographs: Optional[HydrographSet] = None
         self._worker: Optional[SimWorker] = None
@@ -83,9 +125,21 @@ class MainWindow(QtWidgets.QMainWindow):
         self._unsaved_changes: bool = False
         self._coarse_result: Optional[SimulationResult] = None
 
+        self._setup_logging()
         self._build_ui()
         self._connect_signals()
         self._update_title()
+
+    def _setup_logging(self):
+        # Attach a handler that pipes 'pondsim' info logs to the status label
+        self._log_handler = QtStatusLogHandler(self._on_log_emitted)
+        self._log_handler.setFormatter(logging.Formatter("%(message)s"))
+        logging.getLogger("pondsim").addHandler(self._log_handler)
+        logging.getLogger("pondsim").setLevel(logging.INFO)
+
+    @QtCore.pyqtSlot(str)
+    def _on_log_emitted(self, msg: str):
+        self.lbl_status.setText(msg)
 
     # ------------------------------------------------------------------
     # UI construction
@@ -125,11 +179,16 @@ class MainWindow(QtWidgets.QMainWindow):
         main_h = QtWidgets.QHBoxLayout(central)
         main_h.setContentsMargins(8, 8, 8, 8)
 
-        # ---- Left control panel ----
+        # ---- Left control panel (in a scroll area) ----
+        scroll = QtWidgets.QScrollArea()
+        scroll.setFixedWidth(340)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+
         ctrl_widget = QtWidgets.QWidget()
-        ctrl_widget.setFixedWidth(320)
         ctrl_v = QtWidgets.QVBoxLayout(ctrl_widget)
         ctrl_v.setSpacing(6)
+        ctrl_v.setContentsMargins(0, 0, 10, 0) # room for scrollbar
 
         # DEM
         grp_dem = QtWidgets.QGroupBox("Ground Model (DEM)")
@@ -137,8 +196,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.lbl_dem = QtWidgets.QLabel("(none loaded)")
         self.lbl_dem.setWordWrap(True)
         self.btn_load_dem = QtWidgets.QPushButton("Load DEM (ASC / TIF)…")
+        self.btn_load_roughness = QtWidgets.QPushButton("Load Roughness (Optional)…")
         dem_layout.addWidget(self.lbl_dem)
         dem_layout.addWidget(self.btn_load_dem)
+        dem_layout.addWidget(self.btn_load_roughness)
         ctrl_v.addWidget(grp_dem)
 
         # Point sources
@@ -203,6 +264,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self.chk_fill.setChecked(True)
         par_form.addRow(self.chk_fill)
 
+        self.spn_manning = QtWidgets.QDoubleSpinBox()
+        self.spn_manning.setRange(0.01, 1.0); self.spn_manning.setValue(0.03)
+        self.spn_manning.setSingleStep(0.005); self.spn_manning.setDecimals(3)
+        par_form.addRow("Manning's n (default):", self.spn_manning)
+
+        self.cmb_backend = QtWidgets.QComboBox()
+        from .backends.base import BackendRegistry
+        backends = ["auto"] + [info.id for info in BackendRegistry.get_backend_info()]
+        self.cmb_backend.addItems(backends)
+        par_form.addRow("Solver Backend:", self.cmb_backend)
+
         ctrl_v.addWidget(grp_par)
 
         # Two-pass analysis
@@ -260,7 +332,8 @@ class MainWindow(QtWidgets.QMainWindow):
         btn_row.addWidget(self.btn_cancel)
         ctrl_v.addLayout(btn_row)
 
-        main_h.addWidget(ctrl_widget)
+        scroll.setWidget(ctrl_widget)
+        main_h.addWidget(scroll)
 
         # ---- Right visualisation panel ----
         right_v = QtWidgets.QVBoxLayout()
@@ -293,6 +366,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._act_save_as.triggered.connect(self._save_project_as)
         self.btn_load_dem.clicked.connect(self._load_dem)
         self.btn_load_sources.clicked.connect(self._load_sources)
+        self.btn_load_roughness.clicked.connect(self._load_roughness)
         self.btn_load_hydro.clicked.connect(self._load_hydrographs)
         self.btn_output.clicked.connect(self._select_output)
         self.btn_run.clicked.connect(self._run)
@@ -425,8 +499,10 @@ class MainWindow(QtWidgets.QMainWindow):
             synthetic_volume_m3=self.spn_syn_vol.value(),
             use_two_pass=self.grp_twopass.isChecked(),
             coarse_factor=self.spn_coarse_factor.value(),
-            buffer_m=self.spn_buffer.value(),
+            manning_n=self.spn_manning.value(),
+            backend=self.cmb_backend.currentText(),
         )
+        p.roughness_path = self.btn_load_roughness.toolTip() if self._roughness is not None else None
 
     def _restore_from_project(self):
         """Reload all UI state and data from self._project."""
@@ -444,6 +520,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.grp_twopass.setChecked(params.use_two_pass)
         self.spn_coarse_factor.setValue(params.coarse_factor)
         self.spn_buffer.setValue(params.buffer_m)
+        self.spn_manning.setValue(params.manning_n)
+        
+        idx = self.cmb_backend.findText(params.backend)
+        if idx >= 0:
+            self.cmb_backend.setCurrentIndex(idx)
 
         if p.output_dir:
             self.txt_output.setText(p.output_dir)
@@ -462,6 +543,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
         if p.hydrographs_path and Path(p.hydrographs_path).exists():
             self._load_hydrographs_from_path(p.hydrographs_path)
+
+        if p.roughness_path and Path(p.roughness_path).exists() and self._dem is not None:
+            self._load_roughness_from_path(p.roughness_path)
 
         # Reload last run results onto map
         if p.last_run and p.last_run.exists() and self._dem is not None:
@@ -563,6 +647,31 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception:
             self._show_error("Failed to load hydrographs", traceback.format_exc())
 
+    def _load_roughness(self):
+        if self._dem is None:
+            QtWidgets.QMessageBox.warning(self, "Load DEM first", "Please load a DEM before loading a roughness map.")
+            return
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Open Roughness Map", "", "Raster files (*.asc *.tif *.tiff);;All files (*)"
+        )
+        if path:
+            self._load_roughness_from_path(path)
+
+    def _load_roughness_from_path(self, path: str):
+        try:
+            from .raster import read_dem
+            rough_data = read_dem(path)
+            if self._dem and rough_data.shape != self._dem.shape:
+                QtWidgets.QMessageBox.warning(self, "Grid mismatch", 
+                    f"Roughness grid {rough_data.shape} does not match DEM {self._dem.shape}.")
+                return
+            self._roughness = rough_data.elevation
+            self.btn_load_roughness.setText(f"Roughness: {Path(path).name}")
+            self.btn_load_roughness.setToolTip(str(path))
+            self._mark_changed()
+        except Exception:
+            self._show_error("Failed to load roughness", traceback.format_exc())
+
     def _select_output(self):
         folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Select Output Folder")
         if folder:
@@ -588,154 +697,67 @@ class MainWindow(QtWidgets.QMainWindow):
         self.spn_duration.setEnabled(not has_csv)
 
     def _run(self):
+        from .workflow import SimulationWorkflow
+        
+        # Prepare inputs
         hydrographs = self._hydrographs
         if hydrographs is None:
-            from .hydrographs import make_synthetic_hydrograph
             duration_s = self.spn_duration.value()
-            # Use per-node volumes from shapefile if available, else the spinner
-            if self._sources.volumes_m3:
-                volumes = self._sources.volumes_m3
-            else:
-                volumes = self.spn_syn_vol.value()
-            hydrographs = make_synthetic_hydrograph(
-                node_ids=self._sources.node_ids,
-                volumes_m3=volumes,
-                duration_s=duration_s,
-            )
-        else:
-            duration_s = hydrographs.duration_s
-
+            volumes = self._sources.volumes_m3 if self._sources.volumes_m3 else self.spn_syn_vol.value()
+            hydrographs = make_synthetic_hydrograph(self._sources.node_ids, duration_s, volumes)
+        
         config = SimulationConfig(
             output_dir=self.txt_output.text(),
-            simulation_duration_s=duration_s,
-            fixed_timestep_s=None if self.chk_adaptive.isChecked()
-                             else self.spn_fixed_dt.value(),
+            simulation_duration_s=hydrographs.duration_s,
+            manning_n=self._roughness if self._roughness is not None else self.spn_manning.value(),
+            backend=self.cmb_backend.currentText(),
+            fixed_timestep_s=None if self.chk_adaptive.isChecked() else self.spn_fixed_dt.value(),
             snapshot_interval_s=self.spn_snapshot.value(),
             export_netcdf=self.chk_netcdf.isChecked(),
             fill_sinks=self.chk_fill.isChecked(),
         )
 
+        wf = SimulationWorkflow(self._dem, self._sources, hydrographs, self._roughness)
+        
         if self.grp_twopass.isChecked():
-            self._run_coarse_pass(hydrographs, config)
+            factor = self.spn_coarse_factor.value()
+            buffer_m = self.spn_buffer.value()
+            work = lambda cancel, prog, inter: wf.run_two_pass(config, factor, buffer_m, prog, cancel, inter)
         else:
-            self._start_worker(self._dem, self._sources, hydrographs, config)
+            work = lambda cancel, prog, _inter: wf.run_one_pass(config, prog, cancel)
+            
+        self._start_worker(work)
 
-    def _start_worker(self, dem, sources, hydrographs, config):
-        """Launch a SimWorker for the fine (or single-pass) simulation."""
-        self._worker = SimWorker(dem, sources, hydrographs, config)
+    def _start_worker(self, work_func):
+        """Launch a SimWorker for the given workflow function."""
+        self._worker = SimWorker(work_func)
         self._worker.progress.connect(self._on_progress)
         self._worker.finished.connect(self._on_finished)
         self._worker.errored.connect(self._on_error)
+        self._worker.ask_proceed.connect(self._on_ask_proceed)
+        
         self.btn_run.setEnabled(False)
         self.btn_cancel.setEnabled(True)
+        self.progress_bar.setValue(0)
         self._worker.start()
 
-    def _run_coarse_pass(self, hydrographs, fine_config):
-        """Downsample DEM and run a fast coarse simulation to find flood extents."""
-        import tempfile
-        from .raster import resample_dem
-        from .sources import load_sources
-        from landlab import RasterModelGrid
-
-        factor = self.spn_coarse_factor.value()
-        coarse_dem = resample_dem(self._dem, factor)
-        cr, cc = coarse_dem.shape
-        self.lbl_status.setText(
-            f"Coarse pass: {cc}×{cr} cells  "
-            f"(factor {factor}× from {self._dem.shape[1]}×{self._dem.shape[0]}) …"
+    def _on_ask_proceed(self, n, px, pct):
+        msg = (
+            f"Active flood extent identified ({n} disjoint cluster(s)).\n\n"
+            f"Total fine-pass area: {px:,} cells ({pct:.1f}% of full DEM)\n"
+            f"Proceed with fine-resolution simulation?"
         )
-
-        _grid = RasterModelGrid(
-            (cr, cc),
-            xy_spacing=(coarse_dem.dx, coarse_dem.dy),
-            xy_of_lower_left=coarse_dem.xy_of_lower_left,
-        )
-        coarse_sources = load_sources(
-            self.lbl_sources.toolTip(), _grid,
-            hydrograph_ids=hydrographs.node_ids if hydrographs else None,
-        )
-
-        coarse_out = Path(tempfile.mkdtemp(prefix="pondsim_coarse_"))
-        coarse_config = SimulationConfig(
-            output_dir=coarse_out,
-            simulation_duration_s=fine_config.simulation_duration_s,
-            fixed_timestep_s=fine_config.fixed_timestep_s,
-            snapshot_interval_s=fine_config.snapshot_interval_s,
-            export_netcdf=False,
-            fill_sinks=fine_config.fill_sinks,
-        )
-
-        self._worker = SimWorker(coarse_dem, coarse_sources, hydrographs, coarse_config)
-        self._worker.progress.connect(self._on_progress)
-        self._worker.finished.connect(
-            lambda r: self._on_coarse_finished(r, hydrographs, fine_config)
-        )
-        self._worker.errored.connect(self._on_error)
-        self.btn_run.setEnabled(False)
-        self.btn_cancel.setEnabled(True)
-        self._worker.start()
-
-    def _on_coarse_finished(self, coarse_result, hydrographs, fine_config):
-        """Show coarse flood extent and ask whether to proceed with fine pass."""
-        from .raster import clip_dem_to_bbox, flood_extent_bbox
-        from .sources import load_sources
-        from landlab import RasterModelGrid
-
-        self._coarse_result = coarse_result
-        buffer_m = self.spn_buffer.value()
-        bbox = flood_extent_bbox(
-            coarse_result.max_depth, coarse_result.dem,
-            threshold=0.01, buffer_m=buffer_m,
-        )
-        x_min, x_max, y_min, y_max = bbox
-        clipped_dem = clip_dem_to_bbox(self._dem, x_min, x_max, y_min, y_max)
-        clip_rows, clip_cols = clipped_dem.shape
-        orig_rows, orig_cols = self._dem.shape
-        pct = 100.0 * clip_rows * clip_cols / (orig_rows * orig_cols)
-
-        # Show coarse max-depth on map
-        self.map_canvas.show_dem(coarse_result.dem)
-        self.map_canvas.add_overlay(coarse_result.max_depth,
-                                    label="Coarse Max Depth (m) — preview")
-        self.tabs.setCurrentIndex(0)
-
         reply = QtWidgets.QMessageBox.question(
-            self, "Coarse pass complete",
-            f"Approximate flood extent identified.\n\n"
-            f"Clipped DEM:  {clip_cols} × {clip_rows} cells "
-            f"({pct:.1f}% of full DEM)\n"
-            f"Buffer:  {buffer_m:.0f} m\n\n"
-            f"Proceed with full-resolution run on clipped area?",
-            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+            self, "Coarse pass complete", msg,
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
         )
-
-        if reply != QtWidgets.QMessageBox.Yes:
-            self.btn_run.setEnabled(True)
-            self.btn_cancel.setEnabled(False)
-            self.lbl_status.setText("Coarse preview shown — fine pass cancelled.")
-            return
-
-        _grid = RasterModelGrid(
-            (clip_rows, clip_cols),
-            xy_spacing=(clipped_dem.dx, clipped_dem.dy),
-            xy_of_lower_left=clipped_dem.xy_of_lower_left,
-        )
-        clipped_sources = load_sources(
-            self.lbl_sources.toolTip(), _grid,
-            hydrograph_ids=hydrographs.node_ids if hydrographs else None,
-        )
-        self.lbl_status.setText(f"Fine pass: {clip_cols}×{clip_rows} cells …")
-        self._start_worker(clipped_dem, clipped_sources, hydrographs, fine_config)
+        self._worker.set_proceed_response(reply == QtWidgets.QMessageBox.Yes)
 
     def _cancel(self):
         if self._worker:
             self._worker.cancel()
         self.btn_cancel.setEnabled(False)
         self.lbl_status.setText("Cancelling…")
-
-    # ------------------------------------------------------------------
-    # Worker callbacks (run on main thread via signals)
-    # ------------------------------------------------------------------
 
     def _on_progress(self, frac: float, msg: str):
         if frac == 0.0 and "sinks" in msg.lower():
@@ -751,9 +773,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.btn_cancel.setEnabled(False)
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
-        self.lbl_status.setText("Complete.")
-
-        # Show max depth on map
+        
+        # Show results on map (the workflow returns the final stitched result)
         self.map_canvas.show_dem(result.dem)
         if self._sources is not None:
             self.map_canvas.add_sources(self._sources)
@@ -763,7 +784,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Show hydrographs
         self.hyd_canvas.update(result.node_hydrographs)
 
-        # Record last run in project and auto-save if we have a project file
+        # Record last run in project
         self._project.last_run = LastRun(
             max_depth_path=str(result.output_dir / "max_depth.tif"),
             max_level_path=str(result.output_dir / "max_level.tif"),
@@ -772,7 +793,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if self._project_path:
             self._write_project(self._project_path)
         else:
-            self._mark_changed()  # prompt user to save
+            self._unsaved_changes = True
 
         QtWidgets.QMessageBox.information(
             self, "Simulation complete",

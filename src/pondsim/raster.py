@@ -5,6 +5,7 @@ from pathlib import Path
 
 import numpy as np
 import rasterio
+import scipy.ndimage as nd
 from rasterio.transform import Affine, from_origin
 
 
@@ -165,3 +166,77 @@ def flood_extent_bbox(max_depth: np.ndarray, dem: DEM,
         max(x_min, x0), min(x_max, x1),
         max(y_min, y0), min(y_max, y_top),
     )
+
+
+def identify_flood_clusters(
+    max_depth: np.ndarray,
+    dem: DEM,
+    threshold: float = 0.01,
+    buffer_m: float = 200.0,
+) -> list[tuple[float, float, float, float]]:
+    """Identify disjoint flooded regions and return their bounding boxes.
+
+    Returns a list of (x_min, x_max, y_min, y_max) bboxes, merged if they overlap.
+    """
+    flooded = max_depth > threshold
+    if not flooded.any():
+        return [dem.xy_extent()]
+
+    labeled, num_features = nd.label(flooded)
+    bboxes = []
+    x0, x1, y0, y_top = dem.xy_extent()
+    dx, dy = dem.dx, dem.dy
+
+    for i in range(1, num_features + 1):
+        rows, cols = np.where(labeled == i)
+        # Rasterio order: rows are top-down (y decreases)
+        xmin = x0 + cols.min() * dx - buffer_m
+        xmax = x0 + (cols.max() + 1) * dx + buffer_m
+        ymin = y_top - (rows.max() + 1) * dy - buffer_m
+        ymax = y_top - rows.min() * dy + buffer_m
+
+        bboxes.append((
+            max(xmin, x0), min(xmax, x1),
+            max(ymin, y0), min(ymax, y_top)
+        ))
+
+    return merge_bboxes(bboxes)
+
+
+def merge_bboxes(
+    bboxes: list[tuple[float, float, float, float]]
+) -> list[tuple[float, float, float, float]]:
+    """Greedily merge overlapping bounding boxes until disjoint."""
+    if not bboxes:
+        return []
+
+    def intersects(b1, b2):
+        return not (b1[1] < b2[0] or b1[0] > b2[1] or b1[3] < b2[2] or b1[2] > b2[3])
+
+    def union(b1, b2):
+        return (
+            min(b1[0], b2[0]), max(b1[1], b2[1]),
+            min(b1[2], b2[2]), max(b1[3], b2[3])
+        )
+
+    current_boxes = list(bboxes)
+    changed = True
+    while changed:
+        changed = False
+        merged_list = []
+        while current_boxes:
+            box = current_boxes.pop(0)
+            overlap_idx = -1
+            for i, other in enumerate(merged_list):
+                if intersects(box, other):
+                    overlap_idx = i
+                    break
+
+            if overlap_idx >= 0:
+                merged_list[overlap_idx] = union(box, merged_list[overlap_idx])
+                changed = True
+            else:
+                merged_list.append(box)
+        current_boxes = merged_list
+
+    return current_boxes

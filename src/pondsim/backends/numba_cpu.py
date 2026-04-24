@@ -4,7 +4,7 @@ from numba import njit, prange
 from .base import SolverBackend, BackendRegistry
 
 @njit(parallel=True)
-def update_links_numba(q, depth, elev, dist, n_link, n1, n2, active_links, dt, g):
+def update_links_numba(q, depth, elev, dist, n_link, n1, n2, active_links, dt, g, alpha=0.7):
     for i in prange(len(active_links)):
         link_idx = active_links[i]
         idx1 = n1[link_idx]
@@ -14,13 +14,9 @@ def update_links_numba(q, depth, elev, dist, n_link, n1, n2, active_links, dt, g
         d2 = depth[idx2]
         w1 = d1 + elev[idx1]
         w2 = d2 + elev[idx2]
-        
-        z1 = elev[idx1]
-        z2 = elev[idx2]
-        zmax = z1 if z1 > z2 else z2
-        wmax = w1 if w1 > w2 else w2
-        h_flow = wmax - zmax
-        if h_flow < 1e-6: h_flow = 0.0
+        # Bates height: max(w1, w2) - max(z1, z2)
+        h_flow = max(w1, w2) - max(elev[idx1], elev[idx2])
+        if h_flow < 1e-7: h_flow = 0.0
         
         # S = (w_head - w_tail) / L. Landlab links are tail -> head (n1 -> n2)
         S = (w2 - w1) / dist[link_idx]
@@ -30,16 +26,27 @@ def update_links_numba(q, depth, elev, dist, n_link, n1, n2, active_links, dt, g
         
         # Friction term (semi-implicit)
         h_term = h_flow**(7/3)
-        if h_term < 1e-6: h_term = 1e-6
+        if h_term < 1e-7: h_term = 1e-7
         den = 1.0 + g * dt * (n_link[link_idx]**2) * abs(q[link_idx]) / h_term
         
         new_q = num / den
         
-        # Numerical stability: limit discharge to prevent explosions
-        # Max velocity ~ 50 m/s (extreme flash flood)
-        q_limit = 50.0 * (h_flow + 1e-3)
-        if new_q > q_limit: new_q = q_limit
-        elif new_q < -q_limit: new_q = -q_limit
+        # --- Stability Adjustments (from Landlab deAlmeida/Bates) ---
+        # 1. Supercritical flow limit (Froude number <= 1.0)
+        # q_max = froude * h * sqrt(g * h)
+        q_froude = h_flow * (g * h_flow)**0.5
+        if abs(new_q) > q_froude:
+            new_q = (new_q / abs(new_q)) * q_froude
+            
+        # 2. Stability limit (don't drain more than available water)
+        # Landlab uses q_max = 0.2 * h * dx / dt (roughly)
+        # Here we use 0.2 * h * min(dx, dy) / dt
+        # Note: 'dx' and 'dy' are needed here, or similar resolution metrics
+        # Given the original code signature, this assumes a rectangular grid
+        # or simplified dimension logic.
+        q_stability = 0.2 * h_flow * dist[link_idx] / dt
+        if abs(new_q) > q_stability:
+            new_q = (new_q / abs(new_q)) * q_stability
         
         if not np.isfinite(new_q):
             new_q = 0.0
@@ -47,11 +54,11 @@ def update_links_numba(q, depth, elev, dist, n_link, n1, n2, active_links, dt, g
         q[link_idx] = new_q
 
 @njit(parallel=True)
-def update_nodes_gather_numba(depth, q, links_at_node, link_dirs, node_status, dx, dy, dt, area):
+def update_nodes_gather_numba(depth, elev, q, links_at_node, nodes_at_link, link_dirs, node_status, dx, dy, dt, area, new_depths, alpha=0.7):
     for i in prange(len(depth)):
-        # Only update Core nodes (status 0). 
-        # Boundaries (Fixed Value/Gradient) are handled in apply_bc
+        # Only update Core nodes (status 0)
         if node_status[i] != 0:
+            new_depths[i] = depth[i]
             continue
             
         dq = 0.0
@@ -59,20 +66,18 @@ def update_nodes_gather_numba(depth, q, links_at_node, link_dirs, node_status, d
             link = links_at_node[i, j]
             if link != -1:
                 ldir = link_dirs[i, j]
+                # East/West width is dy, North/South width is dx
                 Lperp = dy if (j == 0 or j == 2) else dx
                 dq += q[link] * Lperp * ldir
         
-        new_depth = depth[i] + (dt / area) * dq
+        val = depth[i] + (dt / area) * dq
         
-        # Stability: no negative depths, and cap extreme depths
-        if new_depth < 0:
-            new_depth = 0.0
-        elif new_depth > 1000.0:
-            new_depth = 1000.0
-        elif not np.isfinite(new_depth):
-            new_depth = 0.0
+        # Stability: no negative depths, cap extreme
+        if val < 0: val = 0.0
+        elif val > 1000.0: val = 1000.0
+        elif not np.isfinite(val): val = 0.0
             
-        depth[i] = new_depth
+        new_depths[i] = val
 
 @njit(parallel=True)
 def calc_dt_parallel(q, depth, elev, n1, n2, active_links, dx, dy, g):
@@ -134,6 +139,9 @@ class NumbaCpuSolver(SolverBackend):
         self.n1 = self.nodes_at_link[:, 0]
         self.n2 = self.nodes_at_link[:, 1]
         self.dist = np.where(np.abs(self.n2 - self.n1) == 1, self.dx, self.dy).astype(np.float32)
+        self._new_depth_f32 = self._depth_f32.copy()
+        self.alpha = 0.7
+        self._g = 9.80665
         self.n_link = 0.5 * (self.n_nodes_arr[self.n1] + self.n_nodes_arr[self.n2])
         
         # BC handling
@@ -174,19 +182,32 @@ class NumbaCpuSolver(SolverBackend):
     def sync_to_grid(self) -> None:
         self._grid_depth_ref[:] = self._depth_f32.astype(np.float64)
 
+    def add_to_depth(self, node_idx: int, value: float) -> None:
+        self._depth_f32[node_idx] += value
+
+    def add_to_depths(self, node_indices: np.ndarray, values: np.ndarray) -> None:
+        self._depth_f32[node_indices] += values
+
     def calc_time_step(self):
         g = 9.80665
         return calc_dt_parallel(self.q, self._depth_f32, self.elev, self.n1, self.n2, self.active_links, self.dx, self.dy, g)
 
     def run_one_step(self, dt: float) -> None:
-        g = 9.80665
-        # 1. Update discharges
-        update_links_numba(self.q, self._depth_f32, self.elev, self.dist, self.n_link, 
-                           self.n1, self.n2, self.active_links, dt, g)
+        update_links_numba(
+            self.q, self._depth_f32, self.elev, self.dist, 
+            self.n_link, self.n1, self.n2, self.active_links, 
+            dt, self._g, self.alpha
+        )
         
-        # 2. Update depths
-        update_nodes_gather_numba(self._depth_f32, self.q, self.links_at_node, self.link_dirs, 
-                                  self.node_status, self.dx, self.dy, dt, self.area)
+        update_nodes_gather_numba(
+            self._depth_f32, self.elev, self.q, 
+            self.links_at_node, self.nodes_at_link, self.link_dirs, 
+            self.node_status, self.dx, self.dy, dt, self.area, 
+            self._new_depth_f32, self.alpha
+        )
+        
+        # Swap buffers
+        self._depth_f32, self._new_depth_f32 = self._new_depth_f32, self._depth_f32
         
         # 3. Boundary Conditions
         if len(self.fixed_val_indices) > 0:

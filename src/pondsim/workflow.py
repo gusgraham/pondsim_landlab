@@ -130,6 +130,12 @@ class SimulationWorkflow:
         from .raster import resample_dem
         import tempfile
 
+        # 0. Overall timing
+        import time
+        from datetime import datetime
+        _start_perf = time.perf_counter()
+        timestamp_started = datetime.now().isoformat()
+
         # 1. Coarse Pass
         logger.info(f"Starting coarse pass (factor {coarse_factor}x) ...")
         coarse_dem = resample_dem(self.dem, coarse_factor)
@@ -208,6 +214,13 @@ class SimulationWorkflow:
 
         # 5. Stitching
         final_result = self.stitch_results(results, config.output_dir)
+        final_result.timestamp_started = timestamp_started
+        final_result.timestamp_finished = datetime.now().isoformat()
+        final_result.wall_clock_duration_s = time.perf_counter() - _start_perf
+        final_result.backend_name = config.backend # Or identify if all sub-runs used same
+        if results:
+            final_result.backend_name = results[0].backend_name
+
         self.save_results(final_result, config)
         return final_result
 
@@ -255,7 +268,11 @@ class SimulationWorkflow:
             max_level=global_max_level,
             node_hydrographs=final_hyd,
             dem=self.dem,
-            output_dir=output_dir
+            output_dir=output_dir,
+            timestamp_started="",
+            timestamp_finished="",
+            wall_clock_duration_s=0.0,
+            backend_name=""
         )
 
     def save_results(self, result: SimulationResult, config: SimulationConfig):
@@ -268,8 +285,10 @@ class SimulationWorkflow:
             "peak_depth_m": float(np.max(result.max_depth)),
             "inundated_area_sqm": float(inundated_area),
             "simulation_duration_s": config.simulation_duration_s,
-            "backend_used": config.backend,
-            "timestamp_finished": datetime.now().isoformat(),
+            "backend_used": result.backend_name,
+            "timestamp_started": result.timestamp_started,
+            "timestamp_finished": result.timestamp_finished,
+            "wall_clock_duration_s": round(result.wall_clock_duration_s, 3),
         }
         with open(out_dir / "summary_stats.json", "w") as f:
             json.dump(stats, f, indent=2)

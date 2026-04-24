@@ -53,6 +53,9 @@ def main():
         stream=sys.stderr
     )
     
+    # Silence Numba internal logs
+    logging.getLogger("numba").setLevel(logging.WARNING)
+    
     # Validation
     if not args.hydrographs and (args.syn_vol is None or args.syn_dur is None):
         logging.error("Incomplete input: Specify either --hydrographs path or both --syn-vol and --syn-dur for synthetic inflows.")

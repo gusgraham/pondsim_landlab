@@ -825,6 +825,8 @@ def main():
     import sys
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s  %(levelname)-8s  %(message)s")
+    # Silence Numba internal logs
+    logging.getLogger("numba").setLevel(logging.WARNING)
     app = QtWidgets.QApplication(sys.argv)
     app.setApplicationName("Pondsim")
     win = MainWindow()

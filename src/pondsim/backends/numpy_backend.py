@@ -64,6 +64,12 @@ class NumpySolver(SolverBackend):
     def sync_to_grid(self) -> None:
         pass
 
+    def add_to_depth(self, node_idx: int, value: float) -> None:
+        self._depth[node_idx] += value
+
+    def add_to_depths(self, node_indices: np.ndarray, values: np.ndarray) -> None:
+        np.add.at(self._depth, node_indices, values)
+
     def calc_time_step(self) -> float:
         g = 9.80665
         h_at_link = np.maximum(self._depth[self.n1], self._depth[self.n2])

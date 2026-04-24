@@ -39,6 +39,13 @@ class SolverBackend(Protocol):
 
     def run_one_step(self, dt: float) -> None: ...
     def calc_time_step(self) -> float: ...
+    def sync_to_grid(self) -> None: ...
+    def add_to_depth(self, node_idx: int, value: float) -> None: ...
+    def add_to_depths(self, node_indices: np.ndarray, values: np.ndarray) -> None: ...
+    @property
+    def depth(self) -> np.ndarray: ...
+    @property
+    def NAME(self) -> str: ...
 
 
 # ---------------------------------------------------------------------------
@@ -68,9 +75,14 @@ class SimulationConfig:
 class SimulationResult:
     max_depth: np.ndarray          # 2D, top-down (rasterio order)
     max_level: np.ndarray          # 2D, top-down
+    max_q: np.ndarray              # 2D, top-down unit discharge (m^2/s)
     node_hydrographs: pd.DataFrame
     dem: DEM
     output_dir: Path
+    timestamp_started: str = ""
+    timestamp_finished: str = ""
+    wall_clock_duration_s: float = 0.0
+    backend_name: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -94,16 +106,11 @@ def run_simulation(
 ) -> SimulationResult:
     """
     Run the overland-flow simulation and write output files.
-
-    Parameters
-    ----------
-    dem:          loaded DEM (rasterio top-down order)
-    sources:      snapped point sources
-    hydrographs:  time-varying inflows per node_id
-    config:       simulation settings
-    progress_cb:  optional (fraction, message) callback for UI integration
-    cancel_flag:  mutable list[bool]; set cancel_flag[0]=True to abort
     """
+    import time
+    from datetime import datetime
+    _start_perf = time.perf_counter()
+    timestamp_started = datetime.now().isoformat()
     from landlab import RasterModelGrid
     from landlab.components.overland_flow import OverlandFlow
     from landlab.components.sink_fill import SinkFiller
@@ -123,7 +130,7 @@ def run_simulation(
         nonlocal last_report_time, last_report_frac
         now = elapsed_time # Use simulation time as a proxy or real time
         if force or (now - last_report_time > 1.0) or (frac - last_report_frac > 0.01):
-            logger.info(msg)
+            logger.debug(msg)
             if progress_cb:
                 progress_cb(frac, msg)
             last_report_time = now
@@ -174,12 +181,12 @@ def run_simulation(
         )
     
     # Ensure we have outlets for SinkFiller (Landlab default + our NaN logic)
-    grid.set_status_at_node_on_edges(right=1, top=1, left=1, bottom=1)
+    grid.set_status_at_node_on_edges(right=2, top=2, left=2, bottom=2)
     
     # Re-apply NaN boundary status (in case set_status_at_node_on_edges overwrote them)
     if nan_mask.any():
         grid.status_at_node[nan_mask & ~edge_mask] = grid.BC_NODE_IS_CLOSED
-        grid.status_at_node[nan_mask & edge_mask] = grid.BC_NODE_IS_FIXED_VALUE
+        grid.status_at_node[nan_mask & edge_mask] = grid.BC_NODE_IS_FIXED_GRADIENT
 
     n_core = np.sum(grid.status_at_node == 0)
     n_outlets = np.sum(grid.status_at_node == 1)
@@ -188,31 +195,42 @@ def run_simulation(
     # Final safety check: ensure no NaNs in topography
     elev_ll = np.nan_to_num(elev_ll, nan=valid_mean if 'valid_mean' in locals() else 0.0)
     
+    # ------------------------------------------------------------------
+    # 2. Fill sinks (Use RichDEM for high performance)
+    # ------------------------------------------------------------------
     grid.add_field("topographic__elevation", elev_ll.copy(), at="node")
-    grid.add_field("surface_water__depth",
-                   np.zeros(nrows * ncols), at="node")
+    grid.add_field("surface_water__depth", np.zeros(nrows * ncols), at="node")
 
-    # ------------------------------------------------------------------
-    # 2. Fill sinks (Bug fix #1 — actually run SinkFiller and USE it)
-    # ------------------------------------------------------------------
     if config.fill_sinks:
-        _report(0.0, "Filling sinks …")
+        _report(0.0, "Filling sinks (RichDEM) …")
         try:
-            sf = SinkFiller(grid, apply_slope=True)
-            sf.run_one_step()
-            elev_filled = grid.at_node["topographic__elevation"].copy()
-            logger.info("Sink filling complete. Max fill depth: %.3f m",
-                        (elev_filled - elev_ll).max())
-        except ValueError as exc:
-            logger.warning("SinkFiller failed (%s) — continuing without sink filling.", exc)
-            _report(0.0, "Sink fill skipped — continuing …")
+            import richdem as rd
+            # RichDEM works on 2D top-down arrays. 
+            # We fill the 2D elevation before flattening to Landlab order.
+            elev_2d = dem.elevation.copy()
+            # Replace NaNs with a value RichDEM understands as NoData
+            rd_nodata = -9999.0
+            elev_2d[np.isnan(elev_2d)] = rd_nodata
+            
+            rd_arr = rd.rdarray(elev_2d, no_data=rd_nodata)
+            rd.fill_depressions(rd_arr, in_place=True)
+            
+            # Map back to Landlab order
+            elev_filled = np.flipud(np.array(rd_arr)).ravel().astype(np.float64)
+            # Restore NaNs for consistency with the rest of the engine
+            elev_filled[nan_mask] = valid_mean if 'valid_mean' in locals() else 0.0
+            
+            logger.info("RichDEM sink filling complete.")
+        except Exception as exc:
+            logger.warning("RichDEM sink filling failed (%s) — falling back to unfilled terrain.", exc)
+            _report(0.0, "Sink fill failed — continuing …")
             elev_filled = elev_ll.copy()
-            grid.at_node["topographic__elevation"] = elev_filled.copy()
     else:
         elev_filled = elev_ll.copy()
 
     # Store clean initial elevation for max-level calculation
     elev_initial = elev_filled.copy()
+    grid.at_node["topographic__elevation"][:] = elev_filled
 
     # ------------------------------------------------------------------
     # 3. Initialise result tracking fields
@@ -221,6 +239,7 @@ def run_simulation(
                    np.full(nrows * ncols, config.max_depth_threshold, dtype=np.float32), 
                    at="node")
     grid.add_field("surface_water__maxlevel", elev_initial.copy().astype(np.float32), at="node")
+    grid.add_field("surface_water__max_q", np.zeros(nrows * ncols, dtype=np.float32), at="node")
 
     # ------------------------------------------------------------------
     # 4. Set up Solver Backend
@@ -253,9 +272,22 @@ def run_simulation(
     snapshot_index = 0
     inflow_volume_total = 0.0
 
+    # Pre-calculate sources that actually have hydrographs
+    valid_sources = []
+    for nid, _x, _y, gn in sources.iter():
+        if nid in hydrographs.flows:
+            valid_sources.append((nid, gn))
+    
+    source_nodes_arr = np.array([s[1] for s in valid_sources], dtype=np.int32)
+    source_deltas_arr = np.zeros(len(valid_sources), dtype=np.float32)
+    dx, dy = grid.dx, grid.dy
+    area = dx * dy
+
+    # Pre-calculate links for max_q mapping (replaces -1 with a safe index for np.zeros array)
+    q_map_links = grid.links_at_node.copy()
+    q_map_links[q_map_links == -1] = grid.number_of_links
+
     node_hyd_rows: list[dict] = []
-    active_node_ids = [nid for nid in sources.node_ids
-                       if nid in hydrographs.flows]
 
     while elapsed_time < config.simulation_duration_s:
         if cancel_flag and cancel_flag[0]:
@@ -283,17 +315,18 @@ def run_simulation(
 
         # Inject inflows from hydrographs
         row: dict = {"time_s": elapsed_time}
-        for nid, _x, _y, gn in sources.iter():
-            if nid not in hydrographs.flows:
-                continue
-            avg_flow = hydrographs.flow_average(nid, elapsed_time, elapsed_time + dt)
-            dx, dy = grid.dx, grid.dy
-            delta_depth = avg_flow * dt / (dx * dy)
-            solver.depth[gn] += delta_depth
-            inflow_volume_total += avg_flow * dt
-            row[nid] = avg_flow
-
-        node_hyd_rows.append(row)
+        if valid_sources:
+            t_mid = elapsed_time + 0.5 * dt
+            for idx, (nid, gn) in enumerate(valid_sources):
+                flow = hydrographs.flow_at(nid, t_mid)
+                vol_step = flow * dt
+                source_deltas_arr[idx] = vol_step / area
+                inflow_volume_total += vol_step
+                row[nid] = flow
+            
+            solver.add_to_depths(source_nodes_arr, source_deltas_arr)
+        
+        elapsed_time += dt
 
         # Snapshot before stepping (so t=0 is captured)
         if elapsed_time >= next_snapshot_time and config.export_netcdf and netcdf is not None:
@@ -305,18 +338,51 @@ def run_simulation(
         # Hydrodynamic step
         solver.run_one_step(dt)
 
-        # Update max depth / level
-        # Get current depth from solver for max_depth tracking
-        depth = solver.depth
-        maxd = grid.at_node["surface_water__maxdepth"]
-        np.maximum(depth, maxd, out=maxd)
+        # Update max depth / level / discharge
+        if not getattr(solver, "TRACKS_MAX_INTERNALLY", False):
+            depth = solver.depth
+            # Max Depth
+            maxd = grid.at_node["surface_water__maxdepth"]
+            np.maximum(depth, maxd, out=maxd)
+            
+            # Max Level
+            maxl = grid.at_node["surface_water__maxlevel"]
+            # Optimization: only compute level where depth > 0
+            np.maximum(depth + elev_initial, maxl, out=maxl)
+            
+            # Track max discharge (q) - map link values to nodes
+            if hasattr(solver, "q"):
+                q_mag = np.abs(solver.q)
+            else: # Landlab
+                q_mag = np.abs(grid.at_link["surface_water__discharge"])
+                
+            # Map link maxes to node-based max_q (max magnitude of any connected link)
+            mqn = grid.at_node["surface_water__max_q"]
+            q_with_zero = np.zeros(grid.number_of_links + 1, dtype=q_mag.dtype)
+            q_with_zero[:-1] = q_mag
+            
+            # Gather and take max using pre-calculated mapping
+            node_q_current = np.max(q_with_zero[q_map_links], axis=1)
+            np.maximum(mqn, node_q_current, out=mqn)
 
-        elapsed_time += dt
+        # Reporting and Volume
+        if hasattr(solver, "get_total_volume"):
+            current_vol = solver.get_total_volume()
+        else:
+            current_vol = np.sum(solver.depth) * area
+
         _report(elapsed_time / config.simulation_duration_s,
-                f"t = {elapsed_time:.0f} / {config.simulation_duration_s:.0f} s  "
-                f"  inflow = {inflow_volume_total:.1f} m³")
+                f"t = {elapsed_time:.1f} / {config.simulation_duration_s:.0f} s  "
+                f"  inflow = {inflow_volume_total:.1f} m³  "
+                f"  total = {current_vol:.1f} m³")
 
     # Final sync back to grid nodes
+    if getattr(solver, "TRACKS_MAX_INTERNALLY", False):
+        # Sync max fields from solver to grid
+        grid.at_node["surface_water__maxdepth"][:] = solver.max_depth
+        grid.at_node["surface_water__maxlevel"][:] = solver.max_level
+        grid.at_node["surface_water__max_q"][:] = solver.max_q
+    
     solver.sync_to_grid()
 
     # Final max level
@@ -347,9 +413,14 @@ def run_simulation(
     max_depth_2d = _ll_to_topdown(max_depth_raw)
     max_level_2d = _ll_to_topdown(max_level_raw)
 
+    max_q_raw = grid.at_node["surface_water__max_q"]
+    max_q_raw[~np.isfinite(max_q_raw)] = 0.0
+    max_q_2d = _ll_to_topdown(max_q_raw)
+
     write_raster(output_dir / "max_depth.tif", max_depth_2d, transform, dem.crs)
     write_raster(output_dir / "max_level.tif", max_level_2d, transform, dem.crs)
-    logger.info("Wrote max_depth.tif and max_level.tif to %s", output_dir)
+    write_raster(output_dir / "max_q.tif", max_q_2d, transform, dem.crs)
+    logger.info("Wrote max_depth.tif, max_level.tif, and max_q.tif to %s", output_dir)
 
     node_hydrographs = pd.DataFrame(node_hyd_rows)
     hydro_path = output_dir / "node_hydrographs.csv"
@@ -360,9 +431,14 @@ def run_simulation(
     return SimulationResult(
         max_depth=max_depth_2d,
         max_level=max_level_2d,
+        max_q=max_q_2d,
         node_hydrographs=node_hydrographs,
         dem=dem,
         output_dir=output_dir,
+        timestamp_started=timestamp_started,
+        timestamp_finished=datetime.now().isoformat(),
+        wall_clock_duration_s=time.perf_counter() - _start_perf,
+        backend_name=solver.NAME
     )
 
 

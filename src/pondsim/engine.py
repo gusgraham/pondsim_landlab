@@ -254,6 +254,12 @@ def run_simulation(
     BackendClass = BackendRegistry.get_best_backend(grid, config)
     solver = BackendClass(grid_data, config, grid=grid)
 
+    # Numba backends don't create the discharge link field that Landlab does
+    # automatically; create it here so NetCDF export works for all backends.
+    if "surface_water__discharge" not in grid.at_link:
+        grid.add_field("surface_water__discharge",
+                       np.zeros(grid.number_of_links), at="link")
+
     # ------------------------------------------------------------------
     # 5. Optional NetCDF setup
     # ------------------------------------------------------------------
@@ -330,6 +336,11 @@ def run_simulation(
 
         # Snapshot before stepping (so t=0 is captured)
         if elapsed_time >= next_snapshot_time and config.export_netcdf and netcdf is not None:
+            # Sync solver state to grid fields so _write_nc_snapshot sees
+            # current data regardless of which backend is active.
+            solver.sync_to_grid()
+            if hasattr(solver, "q"):
+                grid.at_link["surface_water__discharge"][:] = solver.q
             _write_nc_snapshot(nc_vars, snapshot_index, elapsed_time,
                                grid, nrows, ncols)
             snapshot_index += 1

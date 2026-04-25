@@ -36,3 +36,10 @@ Thumbs.db
 # Distribution
 *.whl
 *.tar.gz
+
+# Large data / legacy folders
+_LandLabs/
+_landlabs_for_qgis/
+_test_data/*.asc
+_test_data/*.aux.xml
+scratch/

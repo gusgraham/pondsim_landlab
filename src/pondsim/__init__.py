@@ -3,6 +3,7 @@ from .hydrographs import HydrographSet, load_hydrographs
 from .sources import PointSources, load_sources
 from .engine import SimulationConfig, SimulationResult, run_simulation
 from .project import Project, save_project, load_project
+from .workflow import SimulationWorkflow
 
 __all__ = [
     "read_dem",
@@ -17,4 +18,5 @@ __all__ = [
     "Project",
     "save_project",
     "load_project",
+    "SimulationWorkflow",
 ]

@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 import numpy as np
 from swesim.engine import SimulationConfig, extract_grid_arrays
 from swesim.backends.numba_cpu import NumbaCpuSolver

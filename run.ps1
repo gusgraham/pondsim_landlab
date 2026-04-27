@@ -1,4 +1,4 @@
-﻿$Root = $PSScriptRoot
+$Root = $PSScriptRoot
 $env:PYTHONPATH = "$Root\src"
 
 # Path to the virtual environment python

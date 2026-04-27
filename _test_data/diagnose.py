@@ -1,4 +1,4 @@
-﻿"""
+"""
 Step-level diagnostic: runs both backends on the 1m test case and records
 depth at the source node + the 4 adjacent nodes every timestep, plus the
 dt used and q on the outgoing links.  Stops after 300s of sim time so it

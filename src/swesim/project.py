@@ -1,4 +1,4 @@
-﻿"""
+"""
 Project save/load — persists the full simulation setup to a .swesim JSON file.
 
 A project stores:

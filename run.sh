@@ -1,4 +1,4 @@
-﻿#!/bin/bash
+#!/bin/bash
 
 # Swesim Startup Script
 # Automatically configures the environment and launches the requested interface.

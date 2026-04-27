@@ -1,4 +1,4 @@
-﻿name: swesim
+name: swesim
 channels:
   - conda-forge
 dependencies:

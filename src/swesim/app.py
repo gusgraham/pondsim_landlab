@@ -1,4 +1,4 @@
-﻿"""
+"""
 Qt GUI application — no QGIS.
 
 Layout

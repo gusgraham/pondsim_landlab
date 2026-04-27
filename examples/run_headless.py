@@ -1,4 +1,4 @@
-﻿"""
+"""
 Headless (no GUI) example — validates the full pipeline without Qt.
 
 Usage:

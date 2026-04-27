@@ -1,4 +1,4 @@
-﻿# Swesim — Overland Flow Simulation Engine
+# Swesim — Overland Flow Simulation Engine
 
 Swesim is a high-performance overland flow simulation tool designed to model flood extents and depths using the Shallow Water Equations (SWE). It features a "Headless-First" architecture, making it equally suitable for interactive desktop use, automated command-line pipelines, or as a backend library for web applications.
 

@@ -1,4 +1,4 @@
-﻿import numpy as np
+import numpy as np
 import pandas as pd
 from pathlib import Path
 from swesim.engine import run_simulation, SimulationConfig, SimulationResult

@@ -1,4 +1,4 @@
-﻿import numpy as np
+import numpy as np
 from swesim.engine import SimulationConfig
 from swesim.backends.base import BackendRegistry, extract_grid_arrays
 from landlab import RasterModelGrid

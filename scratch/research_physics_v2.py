@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 import numpy as np
 from pathlib import Path
 from swesim.raster import DEM, write_raster

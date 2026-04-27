@@ -1,4 +1,4 @@
-﻿from swesim_helper import *
+from swesim_helper import *
 from swesim_projection_dialog import *
 from swesim_project_dialog import *
 

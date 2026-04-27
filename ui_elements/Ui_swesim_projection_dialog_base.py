@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 
 # Form implementation generated from reading ui file 'c:\Temp\vscode\swesim_landlab\ui_elements\swesim_gis_projection_dialog_base.ui'
 #

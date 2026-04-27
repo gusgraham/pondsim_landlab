@@ -1,4 +1,4 @@
-﻿"""3-way comparison: Landlab vs Numba CPU vs Numba CUDA"""
+"""3-way comparison: Landlab vs Numba CPU vs Numba CUDA"""
 import logging
 import numpy as np
 from swesim.raster import DEM

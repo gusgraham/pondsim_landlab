@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 import numpy as np
 from swesim.raster import DEM
 from swesim.engine import run_simulation, SimulationConfig, extract_grid_arrays

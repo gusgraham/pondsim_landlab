@@ -1,4 +1,4 @@
-﻿from swesim_helper import *
+from swesim_helper import *
 
 from ui_elements.Ui_swesim_projection_dialog_base import Ui_Dialog
 

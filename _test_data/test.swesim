@@ -1,11 +1,11 @@
 {
   "version": "1.0",
   "name": "Untitled",
-  "dem_path": "C:/_claude_code/pondsim_landlab/_test_data/test_deep_1m.tif",
-  "sources_path": "C:/_claude_code/pondsim_landlab/_test_data/test_deep_point.geojson",
+  "dem_path": "C:/Users/FergusGraham/DevTools/surface_water_equation_tool/_test_data/test_deep_2m.tif",
+  "sources_path": "C:/Users/FergusGraham/DevTools/surface_water_equation_tool/_test_data/test_deep_point.geojson",
   "hydrographs_path": null,
   "roughness_path": null,
-  "output_dir": "C:/_claude_code/pondsim_landlab/_test_data/numba_cpu_1m_output",
+  "output_dir": "C:/Users/FergusGraham/DevTools/surface_water_equation_tool/_test_data/numba_cpu_2m_output",
   "parameters": {
     "simulation_duration_s": 3600.0,
     "use_adaptive_timestep": true,
@@ -21,8 +21,8 @@
     "backend": "numba_cpu"
   },
   "last_run": {
-    "max_depth_path": "C:\\_claude_code\\pondsim_landlab\\_test_data\\numba_cpu_1m_output\\max_depth.tif",
-    "max_level_path": "C:\\_claude_code\\pondsim_landlab\\_test_data\\numba_cpu_1m_output\\max_level.tif",
-    "node_hydrographs_path": "C:\\_claude_code\\pondsim_landlab\\_test_data\\numba_cpu_1m_output\\node_hydrographs.csv"
+    "max_depth_path": "C:\\Users\\FergusGraham\\DevTools\\surface_water_equation_tool\\_test_data\\numba_cpu_2m_output\\max_depth.tif",
+    "max_level_path": "C:\\Users\\FergusGraham\\DevTools\\surface_water_equation_tool\\_test_data\\numba_cpu_2m_output\\max_level.tif",
+    "node_hydrographs_path": "C:\\Users\\FergusGraham\\DevTools\\surface_water_equation_tool\\_test_data\\numba_cpu_2m_output\\node_hydrographs.csv"
   }
 }

@@ -11,13 +11,6 @@ logger = logging.getLogger(__name__)
 # CUDA Kernels
 # ------------------------------------------------------------------
 
-@cuda.reduce
-def reduce_min(a, b):
-    return min(a, b)
-
-@cuda.reduce
-def reduce_sum(a, b):
-    return a + b
 
 @cuda.jit
 def k_add_to_depths(depth, node_indices, values):
@@ -216,7 +209,7 @@ class NumbaCudaSolver(SolverBackend):
 
         self.tpb       = 256
         self.bpg_nodes = (n_nodes + self.tpb - 1) // self.tpb
-        self.bpg_links = (len(active_links_h) + self.tpb - 1) // self.tpb
+        self.bpg_links = max(1, (len(active_links_h) + self.tpb - 1) // self.tpb)
 
         self.g     = 9.80665
         self.alpha = 0.7
@@ -272,7 +265,7 @@ class NumbaCudaSolver(SolverBackend):
         return self.d_max_q.copy_to_host()
 
     def get_total_volume(self) -> float:
-        return float(reduce_sum(self.d_depth)) * self.area
+        return float(np.sum(self.d_depth.copy_to_host())) * self.area
 
     def sync_to_grid(self) -> None:
         self._grid_depth_ref[:] = self.depth.astype(np.float64)
@@ -289,7 +282,7 @@ class NumbaCudaSolver(SolverBackend):
             self._d_source_indices = cuda.to_device(node_indices)
             self._d_source_values  = cuda.device_array(len(node_indices), dtype=np.float32)
             self._last_source_indices_id = indices_id
-        self._d_source_values.copy_to_device(values)
+        self._d_source_values.copy_to_device(values.astype(np.float32))
         bpg = (len(node_indices) + self.tpb - 1) // self.tpb
         k_add_to_depths[bpg, self.tpb](self.d_depth, self._d_source_indices,
                                         self._d_source_values)
@@ -300,7 +293,7 @@ class NumbaCudaSolver(SolverBackend):
             self.d_active_links, self.d_dist, self.g, self.alpha,
             self.d_dt_buffer
         )
-        return float(reduce_min(self.d_dt_buffer))
+        return float(np.min(self.d_dt_buffer.copy_to_host()))
 
     def run_one_step(self, dt: float) -> None:
         # 1. Momentum update

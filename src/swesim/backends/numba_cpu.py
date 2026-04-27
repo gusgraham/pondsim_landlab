@@ -187,7 +187,9 @@ class NumbaCpuSolver(SolverBackend):
         self._depth[node_idx] += value
 
     def add_to_depths(self, node_indices: np.ndarray, values: np.ndarray) -> None:
-        self._depth[node_indices] += values.astype(np.float32)
+        if len(node_indices) == 0:
+            return
+        np.add.at(self._depth, node_indices, values.astype(np.float32))
 
     def calc_time_step(self):
         return calc_dt_parallel(

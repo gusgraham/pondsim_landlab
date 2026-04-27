@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "swesim"
-version = "0.1.0"
+version = "0.1.1"
 description = "2D overland-flow ponding simulation driven by ICM overflow hydrographs."
 requires-python = ">=3.10"
 dependencies = [

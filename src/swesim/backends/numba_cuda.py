@@ -228,13 +228,30 @@ class NumbaCudaSolver(SolverBackend):
 
     @classmethod
     def check_availability(cls) -> tuple[bool, str]:
+        import os
         try:
             from numba import cuda as _cuda
-            if _cuda.is_available():
-                return True, "Ok"
-            return False, "CUDA hardware not detected"
         except ImportError:
-            return False, "Numba/CUDA not installed"
+            return False, "Numba not installed"
+
+        if os.environ.get("NUMBA_DISABLE_CUDA", "0") not in ("0", ""):
+            return False, "CUDA disabled by NUMBA_DISABLE_CUDA env var"
+
+        if _cuda.is_available():
+            return True, "Ok"
+
+        # Give a specific reason rather than a generic "not detected"
+        cuda_home = (os.environ.get("CUDA_HOME")
+                     or os.environ.get("CUDA_PATH")
+                     or os.environ.get("CUDA_ROOT"))
+        if cuda_home is None:
+            return (False,
+                    "CUDA toolkit not found — CUDA_HOME/CUDA_PATH not set. "
+                    "Install the NVIDIA CUDA Toolkit and set CUDA_HOME, "
+                    "or run: conda install cudatoolkit")
+        return (False,
+                f"CUDA toolkit found at {cuda_home} but GPU not available "
+                "(driver missing or hardware not present — run cuda_diagnose())")
 
     @classmethod
     def check_vram(cls, grid) -> bool:

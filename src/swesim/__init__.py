@@ -4,6 +4,7 @@ from .sources import PointSources, load_sources
 from .engine import SimulationConfig, SimulationResult, run_simulation
 from .project import Project, save_project, load_project
 from .workflow import SimulationWorkflow
+from .backends.base import cuda_diagnose
 
 __all__ = [
     "read_dem",
@@ -19,4 +20,5 @@ __all__ = [
     "save_project",
     "load_project",
     "SimulationWorkflow",
+    "cuda_diagnose",
 ]

@@ -13,4 +13,17 @@ netCDF4
 openpyxl
 PyQt5
 numba
+# CUDA GPU backend (Tier 3) requires the NVIDIA CUDA Toolkit in addition to numba.
+# numba alone is sufficient for the CPU backend (Tier 2).
+#
+# Option A — conda (recommended):
+#   conda install cudatoolkit
+#
+# Option B — system install:
+#   Download CUDA Toolkit from https://developer.nvidia.com/cuda-toolkit
+#   then set CUDA_HOME to the installation path, e.g.:
+#   Windows: set CUDA_HOME=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.x
+#
+# To diagnose a failing CUDA environment:
+#   from swesim.backends.base import cuda_diagnose; cuda_diagnose()
 pytest

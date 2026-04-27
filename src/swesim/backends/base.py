@@ -73,6 +73,59 @@ class BackendRegistry:
 
         raise RuntimeError("No available backends found (even NumPy baseline!)")
 
+def cuda_diagnose() -> None:
+    """Print a human-readable CUDA environment report.
+
+    Call this from any Python environment to understand why the CUDA backend
+    is unavailable::
+
+        import swesim
+        from swesim.backends.base import cuda_diagnose
+        cuda_diagnose()
+    """
+    import os, sys
+
+    print(f"Python : {sys.executable}")
+    print(f"Platform: {sys.platform}")
+
+    # Environment variables Numba uses to locate the toolkit
+    for var in ("CUDA_HOME", "CUDA_PATH", "CUDA_ROOT", "NUMBA_DISABLE_CUDA",
+                "NUMBA_CUDA_DRIVER", "PATH"):
+        val = os.environ.get(var, "<not set>")
+        if var == "PATH":
+            # Just show CUDA-relevant entries
+            cuda_paths = [p for p in val.split(os.pathsep) if "cuda" in p.lower() or "nvidia" in p.lower()]
+            print(f"PATH (CUDA/NVIDIA entries): {cuda_paths or ['<none found>']}")
+        else:
+            print(f"{var}: {val}")
+
+    try:
+        import numba
+        print(f"\nnumba version : {numba.__version__}")
+    except ImportError:
+        print("\nnumba         : NOT INSTALLED — pip install numba")
+        return
+
+    try:
+        from numba import cuda
+        print(f"cuda.is_available(): {cuda.is_available()}")
+        if cuda.is_available():
+            try:
+                cuda.detect()
+            except Exception as e:
+                print(f"cuda.detect() error: {e}")
+        else:
+            print("\nCUDA is not available to Numba.")
+            print("Most likely causes on Windows:")
+            print("  1. CUDA Toolkit not installed — download from https://developer.nvidia.com/cuda-toolkit")
+            print("  2. CUDA_HOME not set — add it to your environment, e.g.:")
+            print("       set CUDA_HOME=C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.x")
+            print("  3. Using a conda env without cudatoolkit — run: conda install cudatoolkit")
+            print("  4. NUMBA_DISABLE_CUDA=1 is set somewhere in your environment")
+    except Exception as e:
+        print(f"Error probing CUDA: {e}")
+
+
 def check_cuda_vram(nrows: int, ncols: int) -> tuple[bool, str]:
     """Estimate VRAM requirements and check against hardware."""
     try:

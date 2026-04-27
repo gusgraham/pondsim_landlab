@@ -1,8 +1,8 @@
-import logging
+﻿import logging
 import numpy as np
-from pondsim.engine import SimulationConfig, extract_grid_arrays
-from pondsim.backends.numba_cpu import NumbaCpuSolver
-from pondsim.backends.landlab_backend import LandlabSolver
+from swesim.engine import SimulationConfig, extract_grid_arrays
+from swesim.backends.numba_cpu import NumbaCpuSolver
+from swesim.backends.landlab_backend import LandlabSolver
 from landlab import RasterModelGrid
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")

@@ -1,6 +1,6 @@
-#!/bin/bash
+﻿#!/bin/bash
 
-# Pondsim Startup Script
+# Swesim Startup Script
 # Automatically configures the environment and launches the requested interface.
 
 # Get the absolute path to the project root
@@ -17,12 +17,12 @@ fi
 
 # Function to show usage
 show_help() {
-    echo "Pondsim — Overland Flow Simulation"
+    echo "Swesim — Overland Flow Simulation"
     echo ""
     echo "Usage: ./run.sh [gui|cli|test] [args...]"
     echo ""
     echo "Commands:"
-    echo "  gui          Start the Pondsim Qt Graphical Interface (default)"
+    echo "  gui          Start the Swesim Qt Graphical Interface (default)"
     echo "  cli          Run the Headless CLI for automated pipelines"
     echo "  test         Run the unit test suite"
     echo ""
@@ -48,12 +48,12 @@ fi
 
 case "$COMMAND" in
     gui)
-        echo "Starting Pondsim GUI..."
-        "$PYTHON" -m pondsim.app "$@"
+        echo "Starting Swesim GUI..."
+        "$PYTHON" -m swesim.app "$@"
         ;;
     cli)
-        echo "Starting Pondsim CLI..."
-        "$PYTHON" -m pondsim.cli "$@"
+        echo "Starting Swesim CLI..."
+        "$PYTHON" -m swesim.cli "$@"
         ;;
     test)
         echo "Running tests..."

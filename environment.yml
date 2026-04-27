@@ -1,4 +1,4 @@
-name: pondsim
+﻿name: swesim
 channels:
   - conda-forge
 dependencies:

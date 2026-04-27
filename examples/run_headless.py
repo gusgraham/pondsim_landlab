@@ -1,4 +1,4 @@
-"""
+﻿"""
 Headless (no GUI) example — validates the full pipeline without Qt.
 
 Usage:
@@ -26,16 +26,16 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 import matplotlib.pyplot as plt
 import numpy as np
 
-from pondsim import (
+from swesim import (
     read_dem,
     run_simulation,
     SimulationConfig,
     HydrographSet,
     PointSources,
 )
-from pondsim.hydrographs import make_synthetic_hydrograph
-from pondsim.sources import sources_from_xy
-from pondsim.viz import plot_dem, plot_overlay, plot_sources, plot_hydrographs
+from swesim.hydrographs import make_synthetic_hydrograph
+from swesim.sources import sources_from_xy
+from swesim.viz import plot_dem, plot_overlay, plot_sources, plot_hydrographs
 
 
 logging.basicConfig(level=logging.INFO,
@@ -43,9 +43,9 @@ logging.basicConfig(level=logging.INFO,
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="Pondsim headless run")
+    p = argparse.ArgumentParser(description="Swesim headless run")
     p.add_argument("--dem", required=True, help="Path to DEM (.asc or .tif)")
-    p.add_argument("--output", default="./pondsim_output", help="Output folder")
+    p.add_argument("--output", default="./swesim_output", help="Output folder")
     p.add_argument("--sources", default=None,
                    help="GeoJSON/GPKG/SHP of ICM overflow points (optional)")
     p.add_argument("--hydrographs", default=None,
@@ -84,7 +84,7 @@ def main():
     # 3. Point sources
     # ------------------------------------------------------------------
     if args.sources:
-        from pondsim.sources import load_sources
+        from swesim.sources import load_sources
         logging.info("Loading point sources: %s", args.sources)
         sources = load_sources(args.sources, _snap_grid)
         node_ids = sources.node_ids
@@ -100,7 +100,7 @@ def main():
     # 4. Hydrographs
     # ------------------------------------------------------------------
     if args.hydrographs:
-        from pondsim.hydrographs import load_hydrographs
+        from swesim.hydrographs import load_hydrographs
         logging.info("Loading hydrographs: %s", args.hydrographs)
         hydrographs = load_hydrographs(args.hydrographs)
         duration_s = hydrographs.duration_s

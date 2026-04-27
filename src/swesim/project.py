@@ -1,5 +1,5 @@
-"""
-Project save/load — persists the full simulation setup to a .pondsim JSON file.
+﻿"""
+Project save/load — persists the full simulation setup to a .swesim JSON file.
 
 A project stores:
   - Input file paths (absolute)
@@ -15,8 +15,8 @@ from pathlib import Path
 from typing import Optional
 
 
-PONDSIM_VERSION = "1.0"
-PROJECT_EXTENSION = ".pondsim"
+SWESIM_VERSION = "1.0"
+PROJECT_EXTENSION = ".swesim"
 
 
 @dataclass
@@ -72,7 +72,7 @@ def save_project(project: Project, path: str | Path) -> None:
         path = path.with_suffix(PROJECT_EXTENSION)
 
     data = {
-        "version": PONDSIM_VERSION,
+        "version": SWESIM_VERSION,
         "name": project.name,
         "dem_path": project.dem_path,
         "sources_path": project.sources_path,

@@ -1,4 +1,4 @@
-$Root = $PSScriptRoot
+﻿$Root = $PSScriptRoot
 $env:PYTHONPATH = "$Root\src"
 
 # Path to the virtual environment python
@@ -13,12 +13,12 @@ $Command = $args[0]
 $RemainingArgs = if ($args.Count -gt 1) { $args[1..($args.Count-1)] } else { @() }
 
 if (-not $Command -or $Command -eq "-h" -or $Command -eq "--help") {
-    Write-Host "Pondsim — Overland Flow Simulation"
+    Write-Host "Swesim — Overland Flow Simulation"
     Write-Host ""
     Write-Host "Usage: .\run.ps1 [gui|cli|test] [args...]"
     Write-Host ""
     Write-Host "Commands:"
-    Write-Host "  gui          Start the Pondsim Qt Graphical Interface (default)"
+    Write-Host "  gui          Start the Swesim Qt Graphical Interface (default)"
     Write-Host "  cli          Run the Headless CLI for automated pipelines"
     Write-Host "  test         Run the unit test suite"
     Write-Host ""
@@ -31,12 +31,12 @@ if (-not $Command -or $Command -eq "-h" -or $Command -eq "--help") {
 
 switch ($Command) {
     "gui" {
-        Write-Host "Starting Pondsim GUI..."
-        & $Python -m pondsim.app @RemainingArgs
+        Write-Host "Starting Swesim GUI..."
+        & $Python -m swesim.app @RemainingArgs
     }
     "cli" {
-        Write-Host "Starting Pondsim CLI..."
-        & $Python -m pondsim.cli @RemainingArgs
+        Write-Host "Starting Swesim CLI..."
+        & $Python -m swesim.cli @RemainingArgs
     }
     "test" {
         Write-Host "Running tests..."
@@ -44,7 +44,7 @@ switch ($Command) {
     }
     default {
         # Fallback to gui if no recognized command is given
-        Write-Host "Starting Pondsim GUI..."
-        & $Python -m pondsim.app @args
+        Write-Host "Starting Swesim GUI..."
+        & $Python -m swesim.app @args
     }
 }

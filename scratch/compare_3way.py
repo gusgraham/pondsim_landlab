@@ -1,10 +1,10 @@
-"""3-way comparison: Landlab vs Numba CPU vs Numba CUDA"""
+﻿"""3-way comparison: Landlab vs Numba CPU vs Numba CUDA"""
 import logging
 import numpy as np
-from pondsim.raster import DEM
-from pondsim.engine import run_simulation, SimulationConfig
-from pondsim.sources import PointSources
-from pondsim.hydrographs import HydrographSet
+from swesim.raster import DEM
+from swesim.engine import run_simulation, SimulationConfig
+from swesim.sources import PointSources
+from swesim.hydrographs import HydrographSet
 from rasterio.transform import from_origin
 
 logging.basicConfig(level=logging.WARNING, format="%(message)s")

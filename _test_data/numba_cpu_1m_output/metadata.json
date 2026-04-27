@@ -1,10 +1,10 @@
-{
-  "pondsim_version": "1.0.0",
+﻿{
+  "swesim_version": "1.0.0",
   "platform": "Windows-11-10.0.26100-SP0",
   "python_version": "3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]",
   "cpu_cores": 12,
   "config": {
-    "output_dir": "C:/_claude_code/pondsim_landlab/_test_data/numba_cpu_1m_output",
+    "output_dir": "C:/_claude_code/swesim_landlab/_test_data/numba_cpu_1m_output",
     "simulation_duration_s": "3600.0",
     "manning_n": "0.03",
     "backend": "numba_cpu",

@@ -1,6 +1,6 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'c:\Temp\vscode\pondsim_landlab\ui_elements\pondsim_project_dialog_base.ui'
+# Form implementation generated from reading ui file 'c:\Temp\vscode\swesim_landlab\ui_elements\swesim_project_dialog_base.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.7
 #

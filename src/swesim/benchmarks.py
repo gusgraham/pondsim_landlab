@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 import time
 import logging
 import numpy as np
@@ -14,7 +14,7 @@ def run_benchmarks(nrows: int = 200, ncols: int = 200, n_steps: int = 100):
     """
     Run performance and validation benchmarks across all available solver backends.
     """
-    print(f"\n{'='*20} Pondsim Solver Benchmarks {'='*20}")
+    print(f"\n{'='*20} Swesim Solver Benchmarks {'='*20}")
     print(f"Grid size: {nrows} x {ncols} ({nrows*ncols:,} nodes)")
     print(f"Steps:     {n_steps}")
     print(f"{'='*67}\n")

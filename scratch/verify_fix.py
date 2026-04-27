@@ -1,4 +1,4 @@
-import sys
+﻿import sys
 from pathlib import Path
 import logging
 import numpy as np
@@ -6,15 +6,15 @@ import numpy as np
 # Allow running from repo root
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from pondsim import (
+from swesim import (
     read_dem,
     run_simulation,
     SimulationConfig,
     HydrographSet,
     PointSources,
 )
-from pondsim.hydrographs import make_synthetic_hydrograph
-from pondsim.sources import sources_from_xy
+from swesim.hydrographs import make_synthetic_hydrograph
+from swesim.sources import sources_from_xy
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)-8s  %(message)s")
 

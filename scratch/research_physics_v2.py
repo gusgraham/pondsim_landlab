@@ -1,10 +1,10 @@
-import logging
+﻿import logging
 import numpy as np
 from pathlib import Path
-from pondsim.raster import DEM, write_raster
-from pondsim.engine import run_simulation, SimulationConfig
-from pondsim.sources import PointSources
-from pondsim.hydrographs import HydrographSet
+from swesim.raster import DEM, write_raster
+from swesim.engine import run_simulation, SimulationConfig
+from swesim.sources import PointSources
+from swesim.hydrographs import HydrographSet
 from rasterio.transform import from_origin
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-8s %(message)s")

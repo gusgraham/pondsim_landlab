@@ -1,8 +1,8 @@
-from pondsim_helper import *
-from pondsim_projection_dialog import *
-from pondsim_project_dialog import *
+﻿from swesim_helper import *
+from swesim_projection_dialog import *
+from swesim_project_dialog import *
 
-from ui_elements.Ui_pondsim_mainwindow_base import Ui_MainWindow
+from ui_elements.Ui_swesim_mainwindow_base import Ui_MainWindow
 
 
 class gis_mainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
@@ -195,7 +195,7 @@ class gis_mainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             "CRS: " + self.thisQgsProject.crs().authid())
 
     def selectCrs(self):
-        selectProjectionDlg = pondsim_projectionDialog()
+        selectProjectionDlg = swesim_projectionDialog()
         selectProjectionDlg.setWindowTitle("Select CRS Dialog")
         selectProjectionDlg.mQgsProjectionSelectionWidget.setCrs(
             self.thisQgsProject.crs())
@@ -295,8 +295,8 @@ class gis_mainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
                             self.thisQgsLayerTreeView.mapToGlobal(position))
 
     def runSimulation(self):
-        projectDlg = pondsim_projectDialog(self.thisQgsProject)
-        projectDlg.setWindowTitle("Pondsim Settings")
+        projectDlg = swesim_projectDialog(self.thisQgsProject)
+        projectDlg.setWindowTitle("Swesim Settings")
         ret = projectDlg.exec()
         if ret == QDialog.Accepted:
             pass
@@ -399,7 +399,7 @@ setup_qgis(qgs)
 # qgs.initQgis()
 
 mainWindow = gis_mainWindow()
-mainWindow.setWindowTitle("Pondsim v" + strVersion)
+mainWindow.setWindowTitle("Swesim v" + strVersion)
 mainWindow.show()
 
 # keys_to_retrieve = ['PATH', 'PYTHONPATH', 'GDAL_DATA', 'GDAL_DRIVER_PATH', 'GDAL_FILENAME_IS_UTF8', 'PDAL_DRIVER_PATH',

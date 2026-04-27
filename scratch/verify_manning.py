@@ -1,6 +1,6 @@
-import numpy as np
-from pondsim.engine import SimulationConfig
-from pondsim.backends.base import BackendRegistry, extract_grid_arrays
+﻿import numpy as np
+from swesim.engine import SimulationConfig
+from swesim.backends.base import BackendRegistry, extract_grid_arrays
 from landlab import RasterModelGrid
 
 def test_manning_array():
@@ -13,7 +13,7 @@ def test_manning_array():
     n_arr = np.linspace(0.01, 0.05, 100)
     config = SimulationConfig(output_dir=".", simulation_duration_s=10.0, manning_n=n_arr)
     
-    from pondsim import backends # noqa
+    from swesim import backends # noqa
     
     # Test Numba CPU
     BackendClass = BackendRegistry._backends["numba_cpu"]

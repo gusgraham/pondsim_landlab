@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 from __future__ import annotations
 import argparse
 import logging
@@ -8,7 +8,7 @@ from .workflow import SimulationWorkflow
 from .engine import SimulationConfig
 
 def main():
-    parser = argparse.ArgumentParser(description="Pondsim Headless CLI - Automated flood simulation orchestrator.")
+    parser = argparse.ArgumentParser(description="Swesim Headless CLI - Automated flood simulation orchestrator.")
     
     # Input group
     input_grp = parser.add_argument_group("Input Data")

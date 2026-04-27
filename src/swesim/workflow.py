@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 import os
 import sys
 import json
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 class SimulationWorkflow:
     """
-    Headless orchestrator for Pondsim simulations.
+    Headless orchestrator for Swesim simulations.
     Manages input data, execution (single or two-pass), results stitching, and metadata export.
     """
 
@@ -146,7 +146,7 @@ class SimulationWorkflow:
         coarse_sources = load_sources(None, _grid, hydrograph_ids=self.hydrographs.node_ids, 
                                       existing_sources=self.sources)
 
-        coarse_out = Path(tempfile.mkdtemp(prefix="pondsim_coarse_"))
+        coarse_out = Path(tempfile.mkdtemp(prefix="swesim_coarse_"))
         coarse_config = SimulationConfig(
             output_dir=coarse_out,
             simulation_duration_s=config.simulation_duration_s,
@@ -295,7 +295,7 @@ class SimulationWorkflow:
 
         # 2. Metadata & Reproducibility
         meta = {
-            "pondsim_version": "1.0.0",
+            "swesim_version": "1.0.0",
             "platform": platform.platform(),
             "python_version": sys.version,
             "cpu_cores": os.cpu_count(),

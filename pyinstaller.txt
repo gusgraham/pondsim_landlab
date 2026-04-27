@@ -1,3 +1,3 @@
-pyi-makespec -n "BasicQGIS_Miniconda v1.0.0" --add-data C:/Temp/vscode/basic_qgis_miniconda/qgis_stable;qgis_stable --noconsole gis_mainwindow.py
+﻿pyi-makespec -n "BasicQGIS_Miniconda v1.0.0" --add-data C:/Temp/vscode/basic_qgis_miniconda/qgis_stable;qgis_stable --noconsole gis_mainwindow.py
 
-pyinstaller --distpath "C:\Temp\vscode\Installers\pondsim_landlab\dist" --workpath "C:\Temp\vscode\Installers\pondsim_landlab\build" "pondsim_landlab_v1.0.0.spec"
+pyinstaller --distpath "C:\Temp\vscode\Installers\swesim_landlab\dist" --workpath "C:\Temp\vscode\Installers\swesim_landlab\build" "swesim_landlab_v1.0.0.spec"

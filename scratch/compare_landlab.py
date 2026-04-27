@@ -1,10 +1,10 @@
-import numpy as np
+﻿import numpy as np
 import pandas as pd
 from pathlib import Path
-from pondsim.engine import run_simulation, SimulationConfig, SimulationResult
-from pondsim.raster import read_dem
-from pondsim.sources import load_sources
-from pondsim.hydrographs import HydrographSet, make_synthetic_hydrograph
+from swesim.engine import run_simulation, SimulationConfig, SimulationResult
+from swesim.raster import read_dem
+from swesim.sources import load_sources
+from swesim.hydrographs import HydrographSet, make_synthetic_hydrograph
 from landlab import RasterModelGrid
 from landlab.components.overland_flow import OverlandFlow
 import matplotlib.pyplot as plt
@@ -66,23 +66,23 @@ def main():
         fill_sinks=False
     )
     
-    print("Running Pondsim (NumPy)...")
-    res_pondsim = run_simulation(dem, sources, hydrographs, config)
+    print("Running Swesim (NumPy)...")
+    res_swesim = run_simulation(dem, sources, hydrographs, config)
     
     print("Running Landlab Native...")
     res_landlab = run_landlab_native(dem, sources, hydrographs, config)
     
-    diff = res_pondsim.max_depth - res_landlab
+    diff = res_swesim.max_depth - res_landlab
     print(f"Comparison Summary:")
-    print(f"  Pondsim Peak Depth: {res_pondsim.max_depth.max():.4f} m")
+    print(f"  Swesim Peak Depth: {res_swesim.max_depth.max():.4f} m")
     print(f"  Landlab Peak Depth: {res_landlab.max():.4f} m")
     print(f"  Max Diff:           {np.abs(diff).max():.4f} m")
     print(f"  Mean Diff:          {np.abs(diff).mean():.4f} m")
     
     plt.figure(figsize=(12, 5))
     plt.subplot(1, 2, 1)
-    plt.imshow(res_pondsim.max_depth, cmap="Blues")
-    plt.title("Pondsim (NumPy)")
+    plt.imshow(res_swesim.max_depth, cmap="Blues")
+    plt.title("Swesim (NumPy)")
     plt.colorbar(label="Depth (m)")
     
     plt.subplot(1, 2, 2)

@@ -1,6 +1,6 @@
-# Pondsim — Overland Flow Simulation Engine
+﻿# Swesim — Overland Flow Simulation Engine
 
-Pondsim is a high-performance overland flow simulation tool designed to model flood extents and depths using the Shallow Water Equations (SWE). It features a "Headless-First" architecture, making it equally suitable for interactive desktop use, automated command-line pipelines, or as a backend library for web applications.
+Swesim is a high-performance overland flow simulation tool designed to model flood extents and depths using the Shallow Water Equations (SWE). It features a "Headless-First" architecture, making it equally suitable for interactive desktop use, automated command-line pipelines, or as a backend library for web applications.
 
 ## 🚀 Key Features
 
@@ -15,10 +15,10 @@ Pondsim is a high-performance overland flow simulation tool designed to model fl
 
 ## 🛠 Usage
 
-This document describes the primary ways to interact with Pondsim.
+This document describes the primary ways to interact with Swesim.
 
 ### 1. Unified Startup Script
-The easiest way to run Pondsim is via the `run.sh` script in the project root. It handles environment configuration and virtual environment detection automatically.
+The easiest way to run Swesim is via the `run.sh` script in the project root. It handles environment configuration and virtual environment detection automatically.
 
 - **Start the GUI**:
   ```bash
@@ -37,8 +37,8 @@ The easiest way to run Pondsim is via the `run.sh` script in the project root. I
 For deeper integration (e.g., in a web backend), you can import the orchestrator directly:
 
 ```python
-from pondsim.workflow import SimulationWorkflow
-from pondsim.engine import SimulationConfig
+from swesim.workflow import SimulationWorkflow
+from swesim.engine import SimulationConfig
 
 # Initialize the workflow orchestrator
 wf = SimulationWorkflow.from_paths(
@@ -61,7 +61,7 @@ result = wf.run_two_pass(config)
 
 ## 🔌 API Reference (Headless Core)
 
-For programmatic integration, the following objects in `pondsim.engine` are the primary interfaces:
+For programmatic integration, the following objects in `swesim.engine` are the primary interfaces:
 
 ### `SimulationConfig` (Input)
 A dataclass defining the simulation environment:
@@ -90,13 +90,13 @@ The recommended entry point:
 
 ## 📂 Project Architecture
 
-Pondsim is designed around the **Orchestrator Pattern**. The GUI and CLI are both thin "consumers" of the unified `SimulationWorkflow` core.
+Swesim is designed around the **Orchestrator Pattern**. The GUI and CLI are both thin "consumers" of the unified `SimulationWorkflow` core.
 
-- **`src/pondsim/workflow.py`**: The central orchestrator. Manages data loading, pass management, results stitching, and metadata export.
-- **`src/pondsim/engine.py`**: The solver infrastructure and time-stepping logic.
-- **`src/pondsim/backends/`**: Individual implementations of the de Almeida SWE solver for different hardware tiers.
-- **`src/pondsim/app.py`**: The Qt-based graphical desktop interface.
-- **`src/pondsim/cli.py`**: The command-line interface entry point.
+- **`src/swesim/workflow.py`**: The central orchestrator. Manages data loading, pass management, results stitching, and metadata export.
+- **`src/swesim/engine.py`**: The solver infrastructure and time-stepping logic.
+- **`src/swesim/backends/`**: Individual implementations of the de Almeida SWE solver for different hardware tiers.
+- **`src/swesim/app.py`**: The Qt-based graphical desktop interface.
+- **`src/swesim/cli.py`**: The command-line interface entry point.
 
 ## 📊 Outputs
 
@@ -110,7 +110,7 @@ Every simulation run produces a comprehensive output package in the specified `-
 
 ## 🧪 Testing
 
-To ensure stability across all backends and interfaces, Pondsim includes a test suite that can be run via:
+To ensure stability across all backends and interfaces, Swesim includes a test suite that can be run via:
 ```bash
 ./run.sh test
 ```

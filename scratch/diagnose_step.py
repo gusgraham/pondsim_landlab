@@ -1,9 +1,9 @@
-import logging
+﻿import logging
 import numpy as np
-from pondsim.raster import DEM
-from pondsim.engine import run_simulation, SimulationConfig, extract_grid_arrays
-from pondsim.backends.numba_cpu import NumbaCpuSolver
-from pondsim.backends.landlab_backend import LandlabSolver
+from swesim.raster import DEM
+from swesim.engine import run_simulation, SimulationConfig, extract_grid_arrays
+from swesim.backends.numba_cpu import NumbaCpuSolver
+from swesim.backends.landlab_backend import LandlabSolver
 from landlab import RasterModelGrid
 from rasterio.transform import from_origin
 

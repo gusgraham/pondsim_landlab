@@ -1,13 +1,13 @@
-from pondsim_helper import *
+﻿from swesim_helper import *
 
-from ui_elements.Ui_pondsim_projection_dialog_base import Ui_Dialog
+from ui_elements.Ui_swesim_projection_dialog_base import Ui_Dialog
 
 
-class pondsim_projectionDialog(QtWidgets.QDialog, Ui_Dialog):
+class swesim_projectionDialog(QtWidgets.QDialog, Ui_Dialog):
 
     def __init__(self, parent=None):
         """Constructor."""
-        super(pondsim_projectionDialog, self).__init__(parent)
+        super(swesim_projectionDialog, self).__init__(parent)
         self.setupUi(self)
 
         self.btnOK.clicked.connect(self.onAccept)

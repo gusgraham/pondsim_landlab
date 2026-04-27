@@ -1,4 +1,4 @@
-"""
+﻿"""
 Step-level diagnostic: runs both backends on the 1m test case and records
 depth at the source node + the 4 adjacent nodes every timestep, plus the
 dt used and q on the outgoing links.  Stops after 300s of sim time so it
@@ -12,12 +12,12 @@ import numpy as np
 import pandas as pd
 from landlab import RasterModelGrid
 
-from pondsim.raster import read_dem
-from pondsim.sources import load_sources
-from pondsim.hydrographs import make_synthetic_hydrograph
-from pondsim.engine import SimulationConfig
-from pondsim.backends.base import extract_grid_arrays
-from pondsim.backends import landlab_backend, numba_cpu   # noqa: ensure registered
+from swesim.raster import read_dem
+from swesim.sources import load_sources
+from swesim.hydrographs import make_synthetic_hydrograph
+from swesim.engine import SimulationConfig
+from swesim.backends.base import extract_grid_arrays
+from swesim.backends import landlab_backend, numba_cpu   # noqa: ensure registered
 
 ROOT = Path(__file__).parent
 
@@ -122,7 +122,7 @@ source_deltas_arr = np.zeros(1, dtype=np.float64)
 
 # ── run one backend, recording per-step data ────────────────────────────────
 def run_backend(backend_id, grid, elev_filled):
-    from pondsim.backends.base import BackendRegistry
+    from swesim.backends.base import BackendRegistry
     grid_data = extract_grid_arrays(grid)
 
     # reset depth to zero

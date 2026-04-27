@@ -1,4 +1,4 @@
-"""
+﻿"""
 Qt GUI application — no QGIS.
 
 Layout
@@ -111,7 +111,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Pondsim — Overland Flow Simulation")
+        self.setWindowTitle("Swesim — Overland Flow Simulation")
         self.resize(1280, 800)
 
         self._dem: Optional[DEM] = None
@@ -131,11 +131,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self._update_title()
 
     def _setup_logging(self):
-        # Attach a handler that pipes 'pondsim' info logs to the status label
+        # Attach a handler that pipes 'swesim' info logs to the status label
         self._log_handler = QtStatusLogHandler(self._on_log_emitted)
         self._log_handler.setFormatter(logging.Formatter("%(message)s"))
-        logging.getLogger("pondsim").addHandler(self._log_handler)
-        logging.getLogger("pondsim").setLevel(logging.INFO)
+        logging.getLogger("swesim").addHandler(self._log_handler)
+        logging.getLogger("swesim").setLevel(logging.INFO)
 
     @QtCore.pyqtSlot(str)
     def _on_log_emitted(self, msg: str):
@@ -400,7 +400,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _update_title(self):
         name = self._project.name if self._project else "Untitled"
         marker = " *" if self._unsaved_changes else ""
-        self.setWindowTitle(f"Pondsim — {name}{marker}")
+        self.setWindowTitle(f"Swesim — {name}{marker}")
 
     def _mark_changed(self):
         self._unsaved_changes = True
@@ -444,7 +444,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _open_project(self):
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
             self, "Open Project", "",
-            f"Pondsim projects (*{PROJECT_EXTENSION});;All files (*)"
+            f"Swesim projects (*{PROJECT_EXTENSION});;All files (*)"
         )
         if not path:
             return
@@ -468,7 +468,7 @@ class MainWindow(QtWidgets.QMainWindow):
         default_name = self._project.name + PROJECT_EXTENSION
         path, _ = QtWidgets.QFileDialog.getSaveFileName(
             self, "Save Project As", default_name,
-            f"Pondsim projects (*{PROJECT_EXTENSION});;All files (*)"
+            f"Swesim projects (*{PROJECT_EXTENSION});;All files (*)"
         )
         if not path:
             return False
@@ -828,7 +828,7 @@ def main():
     # Silence Numba internal logs
     logging.getLogger("numba").setLevel(logging.WARNING)
     app = QtWidgets.QApplication(sys.argv)
-    app.setApplicationName("Pondsim")
+    app.setApplicationName("Swesim")
     win = MainWindow()
     win.show()
     sys.exit(app.exec_())

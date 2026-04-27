@@ -1,0 +1,9 @@
+{
+  "peak_depth_m": 0.5949454307556152,
+  "inundated_area_sqm": 9872.643551819318,
+  "simulation_duration_s": 3600.0,
+  "backend_used": "Numba CPU Parallel",
+  "timestamp_started": "2026-04-27T07:45:26.564746",
+  "timestamp_finished": "2026-04-27T07:45:38.932608",
+  "wall_clock_duration_s": 12.367
+}

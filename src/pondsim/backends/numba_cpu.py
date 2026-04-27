@@ -5,7 +5,7 @@ from numba import njit, prange
 from .base import SolverBackend, BackendRegistry
 
 @njit(parallel=True)
-def update_links_numba(q, depth, elev, dist, n_link, n1, n2, active_links, dt, g):
+def update_links_numba(q, depth, elev, dist, n_link, n1, n2, active_links, dt, g, alpha):
     for i in prange(len(active_links)):
         link_idx = active_links[i]
         idx1 = n1[link_idx]
@@ -30,10 +30,17 @@ def update_links_numba(q, depth, elev, dist, n_link, n1, n2, active_links, dt, g
 
         new_q = num / den
 
+        # Froude limiter — physically-based cap (Fr <= 1)
         q_froude = h_flow * math.sqrt(g * h_flow)
         if abs(new_q) > q_froude:
             new_q = (new_q / abs(new_q)) * q_froude
 
+        # Volume-Courant limiter — prevents a single explicit step from draining a
+        # cell faster than the wave speed allows.  Coefficient 0.2 was validated
+        # against Landlab OverlandFlow; do not raise to alpha (0.7) — that allows
+        # too much discharge at moderate depths and causes the depression to drain
+        # instead of fill (injection CFL cap in engine.py handles the dry-grid
+        # startup step that originally motivated the looser limiter).
         q_stability = 0.2 * h_flow * dist[link_idx] / dt
         if abs(new_q) > q_stability:
             new_q = (new_q / abs(new_q)) * q_stability
@@ -72,29 +79,33 @@ def update_nodes_gather_numba(depth, elev, q, links_at_node, link_dirs,
         new_depths[i] = val
 
 
-@njit(parallel=True)
+@njit
 def calc_dt_parallel(q, depth, elev, n1, n2, active_links, dx, dy, g, alpha):
     # Bates et al. (2010) Eq. 14: dt = alpha * dx / sqrt(g * h)
+    # Serial loop intentional: prange boolean reductions (found_active = True)
+    # are not supported by Numba's parallel reducer and silently stay False,
+    # which caused this function to always return the 1.0s fallback regardless
+    # of actual water depth — killing the adaptive timestep entirely.
+    # h_min matches OverlandFlow's h_init for consistent dry-grid behaviour.
+    h_min = 1e-5
     mindt = 1000.0
-    found_active = False
-    for i in prange(len(active_links)):
+    for i in range(len(active_links)):
         link_idx = active_links[i]
         idx1 = n1[link_idx]
         idx2 = n2[link_idx]
         w1 = depth[idx1] + elev[idx1]
         w2 = depth[idx2] + elev[idx2]
         h = max(w1, w2) - max(elev[idx1], elev[idx2])
-        if h < 1e-6:
-            continue
-
-        found_active = True
+        if h < h_min:
+            h = h_min
         link_dist = dx if abs(idx2 - idx1) == 1 else dy
         dt_link = alpha * link_dist / math.sqrt(g * h)
         if dt_link < mindt:
             mindt = dt_link
 
-    if not found_active:
-        return 1.0
+    if mindt > 999.0:
+        link_dist = min(dx, dy)
+        return alpha * link_dist / math.sqrt(g * h_min)
     return mindt
 
 
@@ -170,7 +181,7 @@ class NumbaCpuSolver(SolverBackend):
         return self._depth
 
     def sync_to_grid(self) -> None:
-        self._grid_depth_ref[:] = self._depth.astype(np.float64)
+        self._grid_depth_ref[:] = self._depth
 
     def add_to_depth(self, node_idx: int, value: float) -> None:
         self._depth[node_idx] += value
@@ -188,7 +199,7 @@ class NumbaCpuSolver(SolverBackend):
         update_links_numba(
             self.q, self._depth, self.elev, self.dist,
             self.n_link, self.n1, self.n2, self.active_links,
-            dt, self._g
+            dt, self._g, self.alpha
         )
 
         update_nodes_gather_numba(

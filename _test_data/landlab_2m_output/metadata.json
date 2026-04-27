@@ -1,0 +1,20 @@
+{
+  "pondsim_version": "1.0.0",
+  "platform": "Windows-11-10.0.26100-SP0",
+  "python_version": "3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]",
+  "cpu_cores": 12,
+  "config": {
+    "output_dir": "C:/_claude_code/pondsim_landlab/_test_data/landlab_2m_output",
+    "simulation_duration_s": "3600.0",
+    "manning_n": "0.03",
+    "backend": "landlab",
+    "fixed_timestep_s": "None",
+    "max_adaptive_dt_s": "120.0",
+    "snapshot_interval_s": "300.0",
+    "export_netcdf": "False",
+    "steep_slopes": "True",
+    "fill_sinks": "True",
+    "max_depth_threshold": "5e-05"
+  },
+  "numba_version": "0.65.0"
+}

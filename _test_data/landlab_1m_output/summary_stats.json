@@ -1,0 +1,9 @@
+{
+  "peak_depth_m": 0.5066049098968506,
+  "inundated_area_sqm": 9326.269573698837,
+  "simulation_duration_s": 3600.0,
+  "backend_used": "Landlab Native (de Almeida)",
+  "timestamp_started": "2026-04-27T07:48:14.270105",
+  "timestamp_finished": "2026-04-27T07:53:44.297703",
+  "wall_clock_duration_s": 330.027
+}

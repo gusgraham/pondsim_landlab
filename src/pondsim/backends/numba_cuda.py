@@ -106,6 +106,7 @@ def k_update_nodes(depth, elev, q, links_at_node, link_dirs, node_status,
 @cuda.jit
 def k_calc_dt(depth, elev, n1, n2, active_links, dist, g, alpha, dt_out):
     # Bates et al. (2010) Eq. 14: dt = alpha * dx / sqrt(g * h)
+    # h_min matches OverlandFlow's h_init and numba_cpu for consistent dry-grid behaviour.
     i = cuda.grid(1)
     if i < active_links.size:
         link_idx = active_links[i]
@@ -114,10 +115,9 @@ def k_calc_dt(depth, elev, n1, n2, active_links, dist, g, alpha, dt_out):
         h = max(depth[idx1] + elev[idx1], depth[idx2] + elev[idx2]) \
             - max(elev[idx1], elev[idx2])
 
-        if h < 1e-6:
-            dt_out[i] = 1000.0
-        else:
-            dt_out[i] = alpha * dist[link_idx] / math.sqrt(g * h)
+        if h < 1e-5:
+            h = 1e-5
+        dt_out[i] = alpha * dist[link_idx] / math.sqrt(g * h)
 
 
 @cuda.jit

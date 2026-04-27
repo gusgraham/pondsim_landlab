@@ -14,6 +14,7 @@ Design goals
 from __future__ import annotations
 
 import logging
+import math
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -123,18 +124,19 @@ def run_simulation(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     elapsed_time = 0.0
-    last_report_time = -100.0
-    last_report_frac = -1.0
+    _last_wall_report = time.perf_counter()
+    last_report_frac  = -1.0
+    _REPORT_INTERVAL  = 0.1   # wall-clock seconds between GUI updates (~10 fps)
 
     def _report(frac: float, msg: str, force: bool = False) -> None:
-        nonlocal last_report_time, last_report_frac
-        now = elapsed_time # Use simulation time as a proxy or real time
-        if force or (now - last_report_time > 1.0) or (frac - last_report_frac > 0.01):
+        nonlocal _last_wall_report, last_report_frac
+        now_wall = time.perf_counter()
+        if force or (now_wall - _last_wall_report >= _REPORT_INTERVAL) or (frac - last_report_frac > 0.05):
             logger.debug(msg)
             if progress_cb:
                 progress_cb(frac, msg)
-            last_report_time = now
-            last_report_frac = frac
+            _last_wall_report = now_wall
+            last_report_frac  = frac
 
     nrows, ncols = dem.shape
     elev_ll = dem.elevation_landlab_order()   # bottom-up, flattened
@@ -180,13 +182,16 @@ def run_simulation(
             nan_mask.sum(), boundary_nan.sum(), valid_min, interior_nan.sum()
         )
     
-    # Ensure we have outlets for SinkFiller (Landlab default + our NaN logic)
-    grid.set_status_at_node_on_edges(right=2, top=2, left=2, bottom=2)
-    
+    # All perimeter nodes are free-drainage outlets (depth forced to 0 each step).
+    # FIXED_GRADIENT (status=2) is intentionally avoided: the Landlab backend's
+    # apply_bc() copies interior depth to boundary nodes, which creates zero water-
+    # surface gradient on the next OverlandFlow step and blocks outflow entirely.
+    grid.set_status_at_node_on_edges(right=1, top=1, left=1, bottom=1)
+
     # Re-apply NaN boundary status (in case set_status_at_node_on_edges overwrote them)
     if nan_mask.any():
         grid.status_at_node[nan_mask & ~edge_mask] = grid.BC_NODE_IS_CLOSED
-        grid.status_at_node[nan_mask & edge_mask] = grid.BC_NODE_IS_FIXED_GRADIENT
+        grid.status_at_node[nan_mask & edge_mask] = grid.BC_NODE_IS_FIXED_VALUE
 
     n_core = np.sum(grid.status_at_node == 0)
     n_outlets = np.sum(grid.status_at_node == 1)
@@ -319,6 +324,24 @@ def run_simulation(
         if dt <= 0:
             break
 
+        # Prevent point-source injection from violating CFL.
+        # calc_time_step() uses existing depths; on a dry grid it returns a large
+        # dt (based on h_min), but the injected water can be much deeper.  Without
+        # this cap the explicit Numba solver oscillates wildly on the first step.
+        # We evaluate Q at the midpoint of the CURRENT tentative dt so that a
+        # zero-value hydrograph at t=0 doesn't silently bypass the check.
+        if config.fixed_timestep_s is None and valid_sources:
+            for nid, gn in valid_sources:
+                q_flow = hydrographs.flow_at(nid, elapsed_time + 0.5 * dt)
+                if q_flow > 0.0:
+                    h_inj = q_flow * dt / area
+                    dt_inj = 0.7 * min(dx, dy) / math.sqrt(9.80665 * h_inj)
+                    if dt_inj < dt:
+                        dt = dt_inj
+            dt = min(dt, remaining)
+            if dt <= 0:
+                break
+
         # Inject inflows from hydrographs
         row: dict = {"time_s": elapsed_time}
         if valid_sources:
@@ -331,7 +354,8 @@ def run_simulation(
                 row[nid] = flow
             
             solver.add_to_depths(source_nodes_arr, source_deltas_arr)
-        
+
+        node_hyd_rows.append(row)
         elapsed_time += dt
 
         # Snapshot before stepping (so t=0 is captured)
@@ -384,8 +408,8 @@ def run_simulation(
 
         _report(elapsed_time / config.simulation_duration_s,
                 f"t = {elapsed_time:.1f} / {config.simulation_duration_s:.0f} s  "
-                f"  inflow = {inflow_volume_total:.1f} m³  "
-                f"  total = {current_vol:.1f} m³")
+                f"inflow = {inflow_volume_total:.1f} m3  "
+                f"stored = {current_vol:.1f} m3")
 
     # Final sync back to grid nodes
     if getattr(solver, "TRACKS_MAX_INTERNALLY", False):
@@ -401,7 +425,7 @@ def run_simulation(
         grid.at_node["surface_water__maxdepth"] + elev_initial
     )
 
-    _report(1.0, f"Sim complete. Inflow: {inflow_volume_total:.1f} m³", force=True)
+    _report(1.0, f"Sim complete. Inflow: {inflow_volume_total:.1f} m3", force=True)
 
     if netcdf is not None:
         netcdf.close()

@@ -1,0 +1,8 @@
+{
+"type": "FeatureCollection",
+"name": "test_deep_point",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:EPSG::27700" } },
+"features": [
+{ "type": "Feature", "properties": { "node_id": "Source 9", "vol_m3": 1000.0, "duration_minutes": null, "start_offset_minutes": 0 }, "geometry": { "type": "Point", "coordinates": [ 438380.637554631452076, 335839.958173747349065 ] } }
+]
+}

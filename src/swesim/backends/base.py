@@ -73,6 +73,45 @@ class BackendRegistry:
 
         raise RuntimeError("No available backends found (even NumPy baseline!)")
 
+def setup_cuda_home_from_pip() -> None:
+    """Configure CUDA_HOME and PATH from pip-installed nvidia packages.
+
+    Enables the GPU backend when CUDA is installed as pip wheels
+    (nvidia-cuda-nvcc-cu12 etc.) rather than a system-wide NVIDIA CUDA
+    Toolkit.  Call this at application startup, before any CUDA check.
+    Silently defers to any pre-existing CUDA_HOME or CUDA_PATH.
+    """
+    import os
+    from pathlib import Path
+
+    if os.environ.get("CUDA_HOME") or os.environ.get("CUDA_PATH"):
+        return
+
+    try:
+        import nvidia.cuda_nvcc as _nvcc
+    except ImportError:
+        return  # nvidia-cuda-nvcc-cu12 not installed; fall back to system install
+
+    cuda_home = str(Path(_nvcc.__file__).parent)
+    os.environ["CUDA_HOME"] = cuda_home
+    os.environ["CUDA_PATH"] = cuda_home
+
+    # Add every nvidia package's bin/ and lib/ to PATH so Windows can find DLLs
+    try:
+        import nvidia as _nvidia_pkg
+        nvidia_root = Path(_nvidia_pkg.__file__).parent
+        extra: list[str] = []
+        for pkg_dir in sorted(nvidia_root.iterdir()):
+            for sub in ("bin", "lib"):
+                candidate = pkg_dir / sub
+                if candidate.is_dir():
+                    extra.append(str(candidate))
+        if extra:
+            os.environ["PATH"] = os.pathsep.join(extra) + os.pathsep + os.environ.get("PATH", "")
+    except Exception:
+        pass
+
+
 def cuda_diagnose() -> None:
     """Print a human-readable CUDA environment report.
 

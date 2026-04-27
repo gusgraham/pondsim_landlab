@@ -8,6 +8,9 @@ from .workflow import SimulationWorkflow
 from .engine import SimulationConfig
 
 def main():
+    from .backends.base import setup_cuda_home_from_pip
+    setup_cuda_home_from_pip()
+
     parser = argparse.ArgumentParser(description="Swesim Headless CLI - Automated flood simulation orchestrator.")
     
     # Input group

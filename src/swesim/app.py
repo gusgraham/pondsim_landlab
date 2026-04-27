@@ -822,6 +822,9 @@ class MainWindow(QtWidgets.QMainWindow):
 # ---------------------------------------------------------------------------
 
 def main():
+    from .backends.base import setup_cuda_home_from_pip
+    setup_cuda_home_from_pip()
+
     import sys
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s  %(levelname)-8s  %(message)s")

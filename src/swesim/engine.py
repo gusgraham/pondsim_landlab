@@ -483,15 +483,20 @@ def run_simulation(
 
 def _open_netcdf(path: Path, grid, nrows: int, ncols: int):
     import netCDF4  # type: ignore
+    from datetime import datetime, timezone
 
     ds = netCDF4.Dataset(path, "w", format="NETCDF4")
+    ds.Conventions = "CF-1.8"
     ds.createDimension("time", None)     # unlimited
     ds.createDimension("y", nrows)
     ds.createDimension("x", ncols)
 
+    epoch = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     v_time = ds.createVariable("time", "f8", ("time",))
-    v_time.units = "seconds"
+    v_time.standard_name = "time"
     v_time.long_name = "elapsed simulation time"
+    v_time.units = f"seconds since {epoch}"
+    v_time.calendar = "standard"
 
     v_x = ds.createVariable("x", "f4", ("x",))
     v_x.units = "m"; v_x.axis = "X"
